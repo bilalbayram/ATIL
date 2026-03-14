@@ -84,6 +84,33 @@ final class DatabaseManager: Sendable {
             """)
         }
 
+        migrator.registerMigration("v2_rules") { db in
+            // Auto-action rules
+            try db.create(table: "rules") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("name", .text).notNull()
+                t.column("matcherType", .text).notNull() // "name", "path", "bundleId", "regex"
+                t.column("matcherValue", .text).notNull()
+                t.column("conditionJSON", .text).notNull() // JSON array of conditions
+                t.column("contextAppBundleId", .text) // optional: another app must/must not be running
+                t.column("contextAppMustBeRunning", .boolean) // true = must be running, false = must not
+                t.column("action", .text).notNull() // "kill", "suspend", "markRedundant"
+                t.column("cooldownSeconds", .integer).notNull().defaults(to: 600) // 10 min default
+                t.column("enabled", .boolean).notNull().defaults(to: true)
+                t.column("createdAt", .datetime).notNull()
+            }
+
+            // Rule event log (tracks last action per rule/process)
+            try db.create(table: "ruleEvents") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("ruleId", .integer).notNull()
+                    .references("rules", onDelete: .cascade)
+                t.column("processIdentity", .text).notNull() // "pid:startTime"
+                t.column("actionTaken", .text).notNull()
+                t.column("timestamp", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 }

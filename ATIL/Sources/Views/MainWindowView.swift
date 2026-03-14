@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainWindowView: View {
     @Environment(ProcessListViewModel.self) private var viewModel
+    @State private var showingRules = false
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -38,12 +39,37 @@ struct MainWindowView: View {
                 .help("Group processes by application bundle")
 
                 Button {
+                    showingRules.toggle()
+                } label: {
+                    Label("Rules", systemImage: "bolt")
+                }
+                .help("Manage auto-action rules")
+
+                Button {
                     Task { await viewModel.refresh() }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(viewModel.monitor.isScanning)
+            }
+        }
+        .sheet(isPresented: $showingRules) {
+            NavigationStack {
+                RulesListView()
+            }
+            .frame(minWidth: 500, minHeight: 400)
+        }
+        .sheet(isPresented: $vm.showingRuleBuilder) {
+            if var rule = viewModel.ruleBuilderRule {
+                RuleBuilderView(rule: Binding(
+                    get: { rule },
+                    set: { rule = $0 }
+                )) { saved in
+                    viewModel.saveRule(saved)
+                } onCancel: {
+                    viewModel.showingRuleBuilder = false
+                }
             }
         }
     }

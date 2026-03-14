@@ -15,6 +15,8 @@ final class ProcessListViewModel {
     var expandedCategories: Set<ProcessCategory> = [.redundant, .suspicious, .quarantined]
     var showGrouped = true
     var lastError: String?
+    var showingRuleBuilder = false
+    var ruleBuilderRule: AutoRule?
 
     // Session stats
     var sessionKillCount = 0
@@ -153,6 +155,19 @@ final class ProcessListViewModel {
         guard let process = selectedProcess else { return }
         safetyGate.ignore(process)
         Task { await monitor.scan() }
+    }
+
+    func createRuleFromSelected() {
+        guard let process = selectedProcess else { return }
+        ruleBuilderRule = monitor.ruleEngine.createRuleFromProcess(process, action: .kill)
+        showingRuleBuilder = true
+    }
+
+    func saveRule(_ rule: AutoRule) {
+        let ruleRepo = RuleRepository(db: DatabaseManager.shared)
+        _ = try? ruleRepo.save(rule)
+        showingRuleBuilder = false
+        ruleBuilderRule = nil
     }
 
     func startMonitoring() {

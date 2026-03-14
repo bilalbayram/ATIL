@@ -39,5 +39,9 @@ struct ProcessListView: View {
             viewModel.relaunchSelected()
             return .handled
         }
+        .onKeyPress("r") {
+            viewModel.createRuleFromSelected()
+            return .handled
+        }
     }
 }
