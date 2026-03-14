@@ -9,12 +9,16 @@ final class ProcessMonitor {
     private let enumerator = ProcessEnumerator()
     private let classifier = ProcessClassifier()
     private let safetyGate = SafetyGate.shared
+    private let launchdScanner = LaunchdScanner()
 
     private var pollingTask: Task<Void, Never>?
 
     // Carry-forward state for idle tracking
     private var previousIdleTimes: [ProcessIdentity: Date] = [:]
     private var previousCPUTimes: [ProcessIdentity: TimeInterval] = [:]
+
+    // Cached launchd map — refreshed each scan
+    private(set) var launchdMap: [String: LaunchdJobInfo] = [:]
 
     func scan() async {
         guard !isScanning else { return }
@@ -24,25 +28,30 @@ final class ProcessMonitor {
         let idleTimes = previousIdleTimes
         let cpuTimes = previousCPUTimes
         let enumerator = self.enumerator
+        let launchdScanner = self.launchdScanner
 
         let rawProcesses = await Task.detached {
             let now = Date()
             let allPIDs = enumerator.listAllPIDs()
             let alivePIDs = Set(allPIDs)
+            let launchdMap = launchdScanner.scanAll()
 
             let context = ProcessEnumerator.EnumerationContext(
                 now: now,
                 currentUID: getuid(),
                 alivePIDs: alivePIDs,
                 previousIdleTimes: idleTimes,
-                previousCPUTimes: cpuTimes
+                previousCPUTimes: cpuTimes,
+                launchdMap: launchdMap
             )
 
-            return enumerator.enumerateAll(context: context)
+            return (enumerator.enumerateAll(context: context), launchdMap)
         }.value
 
+        launchdMap = rawProcesses.1
+
         // Classify on main actor (SafetyGate is MainActor-isolated)
-        let classified = rawProcesses.map { classifier.classify($0, safetyGate: safetyGate) }
+        let classified = rawProcesses.0.map { classifier.classify($0, safetyGate: safetyGate) }
 
         // Update carry-forward state
         var newIdleTimes: [ProcessIdentity: Date] = [:]

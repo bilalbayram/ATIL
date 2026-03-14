@@ -35,6 +35,7 @@ struct SafetyGateTests {
             classificationReasons: [],
             lastSeen: Date(),
             idleSince: nil,
+            launchdJob: nil,
             appIcon: nil
         )
     }

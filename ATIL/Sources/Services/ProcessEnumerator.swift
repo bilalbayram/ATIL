@@ -79,6 +79,7 @@ struct ProcessEnumerator: Sendable {
         let alivePIDs: Set<pid_t>
         let previousIdleTimes: [ProcessIdentity: Date]
         let previousCPUTimes: [ProcessIdentity: TimeInterval]
+        let launchdMap: [String: LaunchdJobInfo]
     }
 
     func buildProcess(
@@ -156,6 +157,9 @@ struct ProcessEnumerator: Sendable {
             return context.previousIdleTimes[identity] ?? context.now
         }()
 
+        // Launchd association
+        let launchdJob = path.flatMap { context.launchdMap[$0] }
+
         return ATILProcess(
             identity: identity,
             pid: pid,
@@ -179,6 +183,7 @@ struct ProcessEnumerator: Sendable {
             classificationReasons: [],
             lastSeen: context.now,
             idleSince: idleSince,
+            launchdJob: launchdJob,
             appIcon: appIcon
         )
     }

@@ -3,8 +3,15 @@ import SwiftUI
 struct CategorySectionView: View {
     let category: ProcessCategory
     let processes: [ATILProcess]
+    let groups: [ProcessGroup]?
 
     @Environment(ProcessListViewModel.self) private var viewModel
+
+    init(category: ProcessCategory, processes: [ATILProcess], groups: [ProcessGroup]? = nil) {
+        self.category = category
+        self.processes = processes
+        self.groups = groups
+    }
 
     private var isExpanded: Binding<Bool> {
         Binding(
@@ -25,9 +32,15 @@ struct CategorySectionView: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: isExpanded) {
-            ForEach(processes) { process in
-                ProcessRowView(process: process)
-                    .tag(process.identity)
+            if let groups, viewModel.showGrouped {
+                ForEach(groups) { group in
+                    ProcessGroupRowView(group: group)
+                }
+            } else {
+                ForEach(processes) { process in
+                    ProcessRowView(process: process)
+                        .tag(process.identity)
+                }
             }
         } label: {
             HStack {

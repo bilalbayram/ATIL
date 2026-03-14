@@ -10,7 +10,8 @@ struct ProcessListView: View {
             ForEach(viewModel.categorizedProcesses, id: \.category) { group in
                 CategorySectionView(
                     category: group.category,
-                    processes: group.processes
+                    processes: group.processes,
+                    groups: viewModel.showGrouped ? viewModel.groupedProcesses[group.category] : nil
                 )
             }
         }

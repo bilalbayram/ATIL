@@ -36,7 +36,8 @@ struct ProcessEnumeratorTests {
             currentUID: getuid(),
             alivePIDs: Set(pids),
             previousIdleTimes: [:],
-            previousCPUTimes: [:]
+            previousCPUTimes: [:],
+            launchdMap: [:]
         )
         let appMap = enumerator.buildRunningAppMap()
         let process = enumerator.buildProcess(pid: selfPID, appMap: appMap, context: context)

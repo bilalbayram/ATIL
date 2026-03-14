@@ -108,6 +108,9 @@ struct ATILProcess: Identifiable, Sendable {
     var lastSeen: Date
     var idleSince: Date?
 
+    // Launchd association (v0.2)
+    var launchdJob: LaunchdJobInfo?
+
     // Resolved at display time
     var appIcon: NSImage?
 

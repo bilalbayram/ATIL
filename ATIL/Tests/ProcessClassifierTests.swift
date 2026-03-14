@@ -42,6 +42,7 @@ struct ProcessClassifierTests {
             classificationReasons: [],
             lastSeen: Date(),
             idleSince: idleSince,
+            launchdJob: nil,
             appIcon: nil
         )
     }

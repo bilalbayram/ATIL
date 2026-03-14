@@ -11,6 +11,7 @@ final class ProcessListViewModel {
     var searchText = ""
     var selectedProcessID: ProcessIdentity?
     var expandedCategories: Set<ProcessCategory> = [.redundant, .suspicious]
+    var showGrouped = true
     var lastError: String?
 
     // Session stats
@@ -52,6 +53,16 @@ final class ProcessListViewModel {
         monitor.snapshot
             .filter { $0.category == .redundant }
             .reduce(0) { $0 + $1.residentMemory }
+    }
+
+    /// Processes grouped by app bundle for display (v0.2).
+    var groupedProcesses: [ProcessCategory: [ProcessGroup]] {
+        let cats = Dictionary(grouping: filteredProcesses, by: \.category)
+        var result: [ProcessCategory: [ProcessGroup]] = [:]
+        for (cat, procs) in cats {
+            result[cat] = ProcessGroup.group(procs)
+        }
+        return result
     }
 
     // MARK: - Actions

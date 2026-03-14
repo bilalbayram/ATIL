@@ -41,6 +41,9 @@ struct ProcessRowView: View {
                         )
                     }
                 }
+                if let job = process.launchdJob, job.willRespawn {
+                    StatusBadgeView(text: "respawns", icon: "arrow.counterclockwise", color: .purple)
+                }
             }
 
             // Memory

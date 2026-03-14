@@ -31,6 +31,12 @@ struct MainWindowView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Toggle(isOn: $vm.showGrouped) {
+                    Label("Group by App", systemImage: "rectangle.3.group")
+                }
+                .toggleStyle(.button)
+                .help("Group processes by application bundle")
+
                 Button {
                     Task { await viewModel.refresh() }
                 } label: {
