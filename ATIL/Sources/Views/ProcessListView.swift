@@ -6,42 +6,52 @@ struct ProcessListView: View {
     var body: some View {
         @Bindable var vm = viewModel
 
-        List(selection: $vm.selectedProcessID) {
-            ForEach(viewModel.categorizedProcesses, id: \.category) { group in
-                CategorySectionView(
-                    category: group.category,
-                    processes: group.processes,
-                    groups: viewModel.showGrouped ? viewModel.groupedProcesses[group.category] : nil
-                )
+        ZStack(alignment: .bottom) {
+            List(selection: $vm.selectedProcessIDs) {
+                ForEach(viewModel.categorizedProcesses, id: \.category) { group in
+                    CategorySectionView(
+                        category: group.category,
+                        processes: group.processes,
+                        groups: viewModel.showGrouped ? viewModel.groupedProcesses[group.category] : nil
+                    )
+                }
+            }
+            .listStyle(.sidebar)
+            .overlay {
+                if viewModel.monitor.isScanning && viewModel.monitor.snapshot.isEmpty {
+                    ProgressView("Scanning processes...")
+                } else if viewModel.filteredProcesses.isEmpty && !viewModel.searchText.isEmpty {
+                    ContentUnavailableView.search(text: viewModel.searchText)
+                }
+            }
+            .onKeyPress(.delete) {
+                Task { await viewModel.killAllSelected() }
+                return .handled
+            }
+            .onKeyPress(.space) {
+                viewModel.suspendAllSelected()
+                return .handled
+            }
+            .onKeyPress("i") {
+                viewModel.ignoreAllSelected()
+                return .handled
+            }
+            .onKeyPress("r") {
+                viewModel.createRuleFromSelected()
+                return .handled
+            }
+            .onChange(of: vm.selectedProcessIDs) {
+                // Sync single selection for inspect panel
+                vm.selectedProcessID = vm.selectedProcessIDs.count == 1 ? vm.selectedProcessIDs.first : nil
+            }
+
+            // Batch action bar
+            if viewModel.hasMultipleSelection {
+                BatchActionBarView(selectedCount: viewModel.selectedProcessIDs.count)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .listStyle(.sidebar)
-        .overlay {
-            if viewModel.monitor.isScanning && viewModel.monitor.snapshot.isEmpty {
-                ProgressView("Scanning processes...")
-            } else if viewModel.filteredProcesses.isEmpty && !viewModel.searchText.isEmpty {
-                ContentUnavailableView.search(text: viewModel.searchText)
-            }
-        }
-        .onKeyPress(.delete) {
-            Task { await viewModel.killSelected() }
-            return .handled
-        }
-        .onKeyPress(.space) {
-            viewModel.toggleSuspendResume()
-            return .handled
-        }
-        .onKeyPress("i") {
-            viewModel.ignoreSelected()
-            return .handled
-        }
-        .onKeyPress("l") {
-            viewModel.relaunchSelected()
-            return .handled
-        }
-        .onKeyPress("r") {
-            viewModel.createRuleFromSelected()
-            return .handled
-        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.hasMultipleSelection)
     }
 }

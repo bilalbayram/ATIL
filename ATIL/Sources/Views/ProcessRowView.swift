@@ -41,6 +41,9 @@ struct ProcessRowView: View {
                         )
                     }
                 }
+                if process.classificationReasons.contains(.blocklistMatch) {
+                    StatusBadgeView(text: "blocklist", icon: "list.bullet", color: .red)
+                }
                 if let job = process.launchdJob, job.willRespawn {
                     StatusBadgeView(text: "respawns", icon: "arrow.counterclockwise", color: .purple)
                 }

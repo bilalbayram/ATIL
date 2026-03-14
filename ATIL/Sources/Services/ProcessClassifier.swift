@@ -62,6 +62,11 @@ struct ProcessClassifier: Sendable {
             reasons.insert(.highMemoryLowActivity)
         }
 
+        // Blocklist match
+        if BlocklistService.shared.isBlocklisted(p) {
+            reasons.insert(.blocklistMatch)
+        }
+
         // Unknown binary: no bundle ID and not in known system paths
         let isKnownSystemPath = p.executablePath.map { path in
             Self.knownSystemPaths.contains { path.hasPrefix($0) }

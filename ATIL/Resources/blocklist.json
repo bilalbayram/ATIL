@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "description": "Curated list of known updater daemons, telemetry agents, and low-value helpers",
+  "entries": [
+    {
+      "identifier": "com.adobe.AdobeUpdater",
+      "type": "bundleId",
+      "name": "Adobe Updater",
+      "reason": "Background updater daemon"
+    },
+    {
+      "identifier": "com.adobe.ARMDCHelper",
+      "type": "bundleId",
+      "name": "Adobe ARM Helper",
+      "reason": "Adobe Application Manager helper"
+    },
+    {
+      "identifier": "com.adobe.acc.installer",
+      "type": "bundleId",
+      "name": "Adobe Creative Cloud Installer",
+      "reason": "Background installer agent"
+    },
+    {
+      "identifier": "com.google.Keystone",
+      "type": "bundleId",
+      "name": "Google Software Update",
+      "reason": "Google product updater"
+    },
+    {
+      "identifier": "com.microsoft.autoupdate",
+      "type": "bundleId",
+      "name": "Microsoft AutoUpdate",
+      "reason": "Microsoft product updater"
+    },
+    {
+      "identifier": "com.spotify.client.helper",
+      "type": "bundleId",
+      "name": "Spotify Helper",
+      "reason": "Background helper for Spotify"
+    },
+    {
+      "identifier": "com.dropbox.DropboxMacUpdate",
+      "type": "bundleId",
+      "name": "Dropbox Updater",
+      "reason": "Dropbox update agent"
+    },
+    {
+      "identifier": "com.electron.helper",
+      "type": "namePrefix",
+      "name": "Electron Helper",
+      "reason": "Generic Electron renderer process"
+    },
+    {
+      "identifier": "com.brave.Browser.helper",
+      "type": "bundleId",
+      "name": "Brave Browser Helper",
+      "reason": "Brave browser helper process"
+    },
+    {
+      "identifier": "crashpad_handler",
+      "type": "name",
+      "name": "Crashpad Handler",
+      "reason": "Crash reporting daemon (various apps)"
+    },
+    {
+      "identifier": "com.valvesoftware.steamhelper",
+      "type": "bundleId",
+      "name": "Steam Helper",
+      "reason": "Steam background helper"
+    },
+    {
+      "identifier": "com.cisco.anyconnect.vpnagentd",
+      "type": "bundleId",
+      "name": "Cisco AnyConnect Agent",
+      "reason": "VPN agent (often idle when not connected)"
+    },
+    {
+      "identifier": "com.apple.ScreenTimeAgent",
+      "type": "bundleId",
+      "name": "Screen Time Agent",
+      "reason": "Screen Time tracking (often unused by developers)"
+    },
+    {
+      "identifier": "com.apple.amp.mediasharingd",
+      "type": "bundleId",
+      "name": "Media Sharing Daemon",
+      "reason": "Apple media sharing (often idle)"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ final class ProcessListViewModel {
     // State
     var searchText = ""
     var selectedProcessID: ProcessIdentity?
+    var selectedProcessIDs: Set<ProcessIdentity> = []
     var expandedCategories: Set<ProcessCategory> = [.redundant, .suspicious, .quarantined]
     var showGrouped = true
     var lastError: String?
@@ -168,6 +169,54 @@ final class ProcessListViewModel {
         _ = try? ruleRepo.save(rule)
         showingRuleBuilder = false
         ruleBuilderRule = nil
+    }
+
+    // MARK: - Bulk Operations
+
+    var selectedProcesses: [ATILProcess] {
+        monitor.snapshot.filter { selectedProcessIDs.contains($0.identity) }
+    }
+
+    var hasMultipleSelection: Bool {
+        selectedProcessIDs.count > 1
+    }
+
+    func selectAll() {
+        selectedProcessIDs = Set(filteredProcesses.map(\.identity))
+    }
+
+    func clearSelection() {
+        selectedProcessIDs.removeAll()
+        selectedProcessID = nil
+    }
+
+    func killAllSelected() async {
+        for process in selectedProcesses {
+            guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
+            if let freed = try? await actionService.kill(process: process) {
+                sessionKillCount += 1
+                sessionMemoryFreed += freed
+            }
+        }
+        clearSelection()
+        loadLifetimeStats()
+        await monitor.scan()
+    }
+
+    func suspendAllSelected() {
+        for process in selectedProcesses {
+            guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
+            try? actionService.suspend(process: process)
+        }
+        Task { await monitor.scan() }
+    }
+
+    func ignoreAllSelected() {
+        for process in selectedProcesses {
+            safetyGate.ignore(process)
+        }
+        clearSelection()
+        Task { await monitor.scan() }
     }
 
     func startMonitoring() {
