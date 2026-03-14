@@ -8,6 +8,7 @@ let project = Project(
             destinations: .macOS,
             product: .app,
             bundleId: "dev.tuist.ATIL",
+            deploymentTargets: .macOS("14.0"),
             infoPlist: .default,
             buildableFolders: [
                 "ATIL/Sources",
@@ -20,6 +21,7 @@ let project = Project(
             destinations: .macOS,
             product: .unitTests,
             bundleId: "dev.tuist.ATILTests",
+            deploymentTargets: .macOS("14.0"),
             infoPlist: .default,
             buildableFolders: [
                 "ATIL/Tests"
