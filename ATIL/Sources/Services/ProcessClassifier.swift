@@ -16,6 +16,13 @@ struct ProcessClassifier: Sendable {
         var p = process
         var reasons: Set<ClassificationReason> = []
 
+        // Layer 0: Suspended processes → quarantined
+        if p.processState == .suspended {
+            p.category = .quarantined
+            p.classificationReasons = reasons
+            return p
+        }
+
         // Layer 1: Safety gate — protected or ignored → healthy
         if safetyGate.isProtected(p) {
             reasons.insert(.protectedProcess)

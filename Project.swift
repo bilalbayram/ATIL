@@ -14,7 +14,9 @@ let project = Project(
                 "ATIL/Sources",
                 "ATIL/Resources",
             ],
-            dependencies: []
+            dependencies: [
+                .external(name: "GRDB"),
+            ]
         ),
         .target(
             name: "ATILTests",

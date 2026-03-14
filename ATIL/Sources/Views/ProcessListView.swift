@@ -27,8 +27,16 @@ struct ProcessListView: View {
             Task { await viewModel.killSelected() }
             return .handled
         }
+        .onKeyPress(.space) {
+            viewModel.toggleSuspendResume()
+            return .handled
+        }
         .onKeyPress("i") {
             viewModel.ignoreSelected()
+            return .handled
+        }
+        .onKeyPress("l") {
+            viewModel.relaunchSelected()
             return .handled
         }
     }
