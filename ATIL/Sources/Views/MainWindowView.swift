@@ -72,5 +72,28 @@ struct MainWindowView: View {
                 }
             }
         }
+        .sheet(isPresented: $vm.showingLaunchdConfirmation) {
+            if let process = viewModel.launchdConfirmProcess {
+                LaunchdConfirmationView(process: process) {
+                    // Kill only
+                    Task { await viewModel.performKill(process: process) }
+                    viewModel.showingLaunchdConfirmation = false
+                    viewModel.launchdConfirmProcess = nil
+                } onKillAndDisable: {
+                    Task { await viewModel.killAndDisableRespawn(process: process) }
+                } onCancel: {
+                    viewModel.showingLaunchdConfirmation = false
+                    viewModel.launchdConfirmProcess = nil
+                }
+            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.lastError != nil },
+            set: { if !$0 { viewModel.lastError = nil } }
+        )) {
+            Button("OK") { viewModel.lastError = nil }
+        } message: {
+            Text(viewModel.lastError ?? "")
+        }
     }
 }

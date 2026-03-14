@@ -18,6 +18,8 @@ final class ProcessListViewModel {
     var lastError: String?
     var showingRuleBuilder = false
     var ruleBuilderRule: AutoRule?
+    var showingLaunchdConfirmation = false
+    var launchdConfirmProcess: ATILProcess?
 
     // Session stats
     var sessionKillCount = 0
@@ -99,6 +101,17 @@ final class ProcessListViewModel {
             return
         }
 
+        // Check for launchd respawn — show confirmation if needed
+        if let job = process.launchdJob, job.willRespawn {
+            launchdConfirmProcess = process
+            showingLaunchdConfirmation = true
+            return
+        }
+
+        await performKill(process: process)
+    }
+
+    func performKill(process: ATILProcess) async {
         do {
             let freedMemory = try await actionService.kill(process: process)
             sessionKillCount += 1
@@ -109,6 +122,27 @@ final class ProcessListViewModel {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func killAndDisableRespawn(process: ATILProcess) async {
+        await performKill(process: process)
+
+        // Disable launchd job
+        if let job = process.launchdJob {
+            do {
+                try await HelperClient.shared.disableLaunchdJob(label: job.label)
+            } catch {
+                // If helper not installed, try launchctl directly (user-level jobs only)
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+                task.arguments = ["bootout", "gui/\(getuid())/\(job.label)"]
+                try? task.run()
+                task.waitUntilExit()
+            }
+        }
+
+        showingLaunchdConfirmation = false
+        launchdConfirmProcess = nil
     }
 
     func suspendSelected() {
