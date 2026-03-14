@@ -225,6 +225,11 @@ final class ProcessListViewModel {
     }
 
     func killAllSelected() async {
+        // Single selection → route through killSelected for launchd confirmation
+        if selectedProcessIDs.count == 1 {
+            await killSelected()
+            return
+        }
         for process in selectedProcesses {
             guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
             if let freed = try? await actionService.kill(process: process) {
@@ -238,6 +243,11 @@ final class ProcessListViewModel {
     }
 
     func suspendAllSelected() {
+        // Single selection → route through suspendSelected for protection check
+        if selectedProcessIDs.count == 1 {
+            suspendSelected()
+            return
+        }
         for process in selectedProcesses {
             guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
             try? actionService.suspend(process: process)
@@ -246,6 +256,11 @@ final class ProcessListViewModel {
     }
 
     func ignoreAllSelected() {
+        // Single selection → route through ignoreSelected
+        if selectedProcessIDs.count == 1 {
+            ignoreSelected()
+            return
+        }
         for process in selectedProcesses {
             safetyGate.ignore(process)
         }

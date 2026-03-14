@@ -30,6 +30,11 @@ struct InspectPanelView: View {
                             CategoryBadge(category: process.category)
                         }
 
+                        // Action buttons
+                        if !process.classificationReasons.contains(.protectedProcess) {
+                            ProcessActionButtons(process: process)
+                        }
+
                         Divider()
 
                         // Core info grid
@@ -242,6 +247,58 @@ private struct CategoryBadge: View {
         case .redundant: .red
         case .suspicious: .orange
         case .healthy: .green
+        }
+    }
+}
+
+/// Action buttons for a single process in the inspect panel.
+private struct ProcessActionButtons: View {
+    let process: ATILProcess
+    @Environment(ProcessListViewModel.self) private var viewModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if process.processState == .suspended {
+                Button {
+                    viewModel.resumeSelected()
+                } label: {
+                    Label("Resume", systemImage: "play.fill")
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button {
+                    Task { await viewModel.killSelected() }
+                } label: {
+                    Label("Kill", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+
+                Button {
+                    viewModel.suspendSelected()
+                } label: {
+                    Label("Suspend", systemImage: "pause.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button {
+                viewModel.ignoreSelected()
+            } label: {
+                Label("Ignore", systemImage: "eye.slash")
+            }
+            .buttonStyle(.bordered)
+
+            if viewModel.canRelaunchSelected {
+                Button {
+                    viewModel.relaunchSelected()
+                } label: {
+                    Label("Relaunch", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Spacer()
         }
     }
 }
