@@ -19,11 +19,19 @@ struct ProcessListView: View {
             }
             .listStyle(.sidebar)
             .animation(ATILAnimation.subtle(reduceMotion: reduceMotion), value: viewModel.searchText)
+            .animation(ATILAnimation.subtle(reduceMotion: reduceMotion), value: viewModel.activeFilterTags)
             .animation(ATILAnimation.snappy(reduceMotion: reduceMotion), value: viewModel.showGrouped)
             .overlay {
                 if viewModel.monitor.isScanning && viewModel.monitor.snapshot.isEmpty {
                     ProgressView("Scanning processes...")
                         .transition(.opacity)
+                } else if viewModel.filteredProcesses.isEmpty && !viewModel.activeFilterTags.isEmpty {
+                    ContentUnavailableView(
+                        "No Matching Processes",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("No processes match the selected filters. Try removing some filters.")
+                    )
+                    .transition(.opacity)
                 } else if viewModel.filteredProcesses.isEmpty && !viewModel.searchText.isEmpty {
                     ContentUnavailableView.search(text: viewModel.searchText)
                         .transition(.opacity)

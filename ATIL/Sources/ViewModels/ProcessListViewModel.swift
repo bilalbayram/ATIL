@@ -13,6 +13,7 @@ final class ProcessListViewModel {
     // State
     var searchText = ""
     var searchFocusNonce = 0
+    var activeFilterTags: Set<ProcessStatusTag> = []
     var selectedProcessID: ProcessIdentity? {
         didSet {
             monitor.focusedProcessID = selectedProcessID
@@ -50,7 +51,7 @@ final class ProcessListViewModel {
 
     // MARK: - Computed
 
-    var filteredProcesses: [ATILProcess] {
+    var searchFilteredProcesses: [ATILProcess] {
         let all = monitor.snapshot
         guard !searchText.isEmpty else { return all }
         let query = searchText.lowercased()
@@ -60,6 +61,23 @@ final class ProcessListViewModel {
             || (p.executablePath?.lowercased().contains(query) ?? false)
             || (p.bundleIdentifier?.lowercased().contains(query) ?? false)
         }
+    }
+
+    var filteredProcesses: [ATILProcess] {
+        let base = searchFilteredProcesses
+        guard !activeFilterTags.isEmpty else { return base }
+        return base.filter { process in
+            activeFilterTags.contains { $0.matches(process) }
+        }
+    }
+
+    var tagCounts: [ProcessStatusTag: Int] {
+        let base = searchFilteredProcesses
+        var counts: [ProcessStatusTag: Int] = [:]
+        for tag in ProcessStatusTag.allCases {
+            counts[tag] = base.filter { tag.matches($0) }.count
+        }
+        return counts
     }
 
     var categorizedProcesses: [(category: ProcessCategory, processes: [ATILProcess])] {
@@ -427,6 +445,18 @@ final class ProcessListViewModel {
 
     func requestSearchFocus() {
         searchFocusNonce += 1
+    }
+
+    func toggleFilterTag(_ tag: ProcessStatusTag) {
+        if activeFilterTags.contains(tag) {
+            activeFilterTags.remove(tag)
+        } else {
+            activeFilterTags.insert(tag)
+        }
+    }
+
+    func clearFilterTags() {
+        activeFilterTags.removeAll()
     }
 
     func recentHistory(limit: Int = 100) -> [KillHistoryRecord] {
