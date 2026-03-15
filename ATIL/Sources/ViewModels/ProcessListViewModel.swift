@@ -257,6 +257,12 @@ final class ProcessListViewModel {
             }
     }
 
+    func selectGroup(_ group: ProcessGroup) {
+        let ids = Set(group.processes.map(\.identity))
+        selectedProcessIDs.formUnion(ids)
+        selectedProcessID = selectedProcessIDs.count == 1 ? selectedProcessIDs.first : nil
+    }
+
     func selectAllVisible() {
         selectedProcessIDs = Set(visibleProcesses.map(\.identity))
         selectedProcessID = selectedProcessIDs.count == 1 ? selectedProcessIDs.first : nil
