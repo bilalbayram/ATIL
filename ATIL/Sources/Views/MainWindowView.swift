@@ -32,6 +32,8 @@ struct MainWindowView: View {
             Group {
                 if viewModel.selectedProcess != nil {
                     InspectPanelView()
+                } else if viewModel.selectedProcessIDs.count > 1 {
+                    MultiSelectionSummaryView()
                 } else {
                     ContentUnavailableView(
                         "No Process Selected",
