@@ -33,8 +33,25 @@ struct CategorySectionView: View {
     var body: some View {
         DisclosureGroup(isExpanded: isExpanded) {
             if let groups, viewModel.showGrouped {
+                // Flatten groups: render group headers and their processes
+                // at the same level so List selection works on all rows.
                 ForEach(groups) { group in
-                    ProcessGroupRowView(group: group)
+                    if group.isGrouped {
+                        // Group header (non-selectable toggle)
+                        ProcessGroupHeaderView(group: group)
+
+                        // Expanded processes — direct children of this DisclosureGroup
+                        if viewModel.expandedGroupIDs.contains(group.id) {
+                            ForEach(group.processes) { process in
+                                ProcessRowView(process: process)
+                                    .tag(process.identity)
+                                    .padding(.leading, 20)
+                            }
+                        }
+                    } else if let process = group.processes.first {
+                        ProcessRowView(process: process)
+                            .tag(process.identity)
+                    }
                 }
             } else {
                 ForEach(processes) { process in
