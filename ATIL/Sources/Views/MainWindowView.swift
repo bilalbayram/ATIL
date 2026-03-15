@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainWindowView: View {
     @Environment(ProcessListViewModel.self) private var viewModel
+    @State private var showingHistory = false
     @State private var showingRules = false
 
     var body: some View {
@@ -30,13 +31,39 @@ struct MainWindowView: View {
         .task {
             viewModel.startMonitoring()
         }
+        .onDisappear {
+            viewModel.stopMonitoring()
+        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    viewModel.requestSearchFocus()
+                } label: {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                .help("Focus search")
+
+                Button {
+                    viewModel.selectAllVisible()
+                } label: {
+                    Label("Select Visible", systemImage: "checklist")
+                }
+                .keyboardShortcut("a", modifiers: .command)
+                .help("Select all visible process rows")
+
                 Toggle(isOn: $vm.showGrouped) {
                     Label("Group by App", systemImage: "rectangle.3.group")
                 }
                 .toggleStyle(.button)
                 .help("Group processes by application bundle")
+
+                Button {
+                    showingHistory.toggle()
+                } label: {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+                .help("Show kill history")
 
                 Button {
                     showingRules.toggle()
@@ -59,6 +86,12 @@ struct MainWindowView: View {
                 RulesListView()
             }
             .frame(minWidth: 500, minHeight: 400)
+        }
+        .sheet(isPresented: $showingHistory) {
+            NavigationStack {
+                HistoryListView()
+            }
+            .frame(minWidth: 560, minHeight: 420)
         }
         .sheet(isPresented: $vm.showingRuleBuilder) {
             if var rule = viewModel.ruleBuilderRule {

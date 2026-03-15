@@ -16,12 +16,12 @@ final class HelperClient {
     // MARK: - Helper Installation
 
     func checkHelperStatus() {
-        let service = SMAppService.agent(plistName: helperLabel)
+        let service = SMAppService.daemon(plistName: helperLabel)
         isHelperInstalled = service.status == .enabled
     }
 
     func installHelper() async throws {
-        let service = SMAppService.agent(plistName: helperLabel)
+        let service = SMAppService.daemon(plistName: helperLabel)
         try service.register()
         isHelperInstalled = true
     }

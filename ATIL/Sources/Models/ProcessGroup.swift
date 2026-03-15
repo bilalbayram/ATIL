@@ -35,8 +35,8 @@ struct ProcessGroup: Identifiable, Sendable {
             if let bundleID = process.bundleIdentifier {
                 key = bundleID
             } else if let path = process.executablePath {
-                // Group by executable name for unbundled processes
-                key = (path as NSString).lastPathComponent
+                // Raw binaries/scripts remain individual rows keyed by their full path.
+                key = path
             } else {
                 key = "pid-\(process.pid)"
             }

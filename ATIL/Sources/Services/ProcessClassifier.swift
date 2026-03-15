@@ -12,7 +12,11 @@ struct ProcessClassifier: Sendable {
     ]
 
     @MainActor
-    func classify(_ process: ATILProcess, safetyGate: SafetyGate) -> ATILProcess {
+    func classify(
+        _ process: ATILProcess,
+        safetyGate: SafetyGate,
+        categoryOverride: ProcessCategory? = nil
+    ) -> ATILProcess {
         var p = process
         var reasons: Set<ClassificationReason> = []
 
@@ -53,8 +57,15 @@ struct ProcessClassifier: Sendable {
         }
 
         // No TTY
-        if !p.hasTTY {
+        if !p.hasTTY && !p.hasOwningApp {
             reasons.insert(.noTTY)
+        }
+
+        // No sockets
+        if !p.hasSockets && !p.hasOwningApp {
+            reasons.insert(.noListeningSockets)
+        } else {
+            reasons.insert(.hasListeningSockets)
         }
 
         // High memory + idle
@@ -81,17 +92,46 @@ struct ProcessClassifier: Sendable {
             reasons.insert(.recentCPUActivity)
         }
 
-        if p.bundleIdentifier != nil && p.bundlePath != nil {
+        if p.hasOwningApp {
             reasons.insert(.activeApp)
+        } else {
+            reasons.insert(.noOwningApp)
+        }
+
+        if p.launchdJob != nil {
+            reasons.insert(.launchdManaged)
+        }
+
+        if let categoryOverride {
+            switch categoryOverride {
+            case .redundant:
+                reasons.insert(.userRuleMarkedRedundant)
+            case .suspicious:
+                reasons.insert(.userRuleMarkedSuspicious)
+            default:
+                break
+            }
+            p.category = categoryOverride
+            p.classificationReasons = reasons
+            return p
         }
 
         // Layer 3: Classify based on signal count
         let redundantSignals = reasons.filter(\.isRedundantSignal)
         let redundantCount = redundantSignals.count
+        let strongSignals: Set<ClassificationReason> = [
+            .orphanedNoParent,
+            .longIdle,
+            .highMemoryLowActivity,
+            .userRuleMarkedRedundant,
+        ]
+        let hasStrongSignal = !reasons.intersection(strongSignals).isEmpty
 
-        if redundantCount >= 3 {
+        if reasons.contains(.launchdManaged) {
+            p.category = .suspicious
+        } else if hasStrongSignal && redundantCount >= 3 {
             p.category = .redundant
-        } else if redundantCount >= 1 && (redundantSignals.contains(.unknownBinary) || redundantCount >= 2) {
+        } else if redundantCount >= 1 {
             p.category = .suspicious
         } else {
             p.category = .healthy

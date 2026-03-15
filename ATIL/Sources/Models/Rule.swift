@@ -26,6 +26,7 @@ struct AutoRule: Codable, FetchableRecord, PersistableRecord, Identifiable, Send
         case name
         case path
         case bundleId
+        case launchdLabel
         case regex
     }
 
@@ -33,12 +34,14 @@ struct AutoRule: Codable, FetchableRecord, PersistableRecord, Identifiable, Send
         case kill
         case suspend
         case markRedundant
+        case markSuspicious
 
         var displayName: String {
             switch self {
             case .kill: "Kill"
             case .suspend: "Suspend"
             case .markRedundant: "Mark Redundant"
+            case .markSuspicious: "Mark Suspicious"
             }
         }
     }
@@ -67,6 +70,8 @@ struct AutoRule: Codable, FetchableRecord, PersistableRecord, Identifiable, Send
             return process.executablePath?.lowercased() == matcherValue.lowercased()
         case .bundleId:
             return process.bundleIdentifier?.lowercased() == matcherValue.lowercased()
+        case .launchdLabel:
+            return process.launchdJob?.label.lowercased() == matcherValue.lowercased()
         case .regex:
             guard let regex = try? NSRegularExpression(pattern: matcherValue, options: .caseInsensitive) else {
                 return false
@@ -93,7 +98,10 @@ struct RuleCondition: Codable, Sendable {
         case isOrphaned
         case isZombie
         case noTTY
-        case noSockets // deferred
+        case hasSockets
+        case noSockets
+        case hasOwningApp
+        case noOwningApp
 
         var displayName: String {
             switch self {
@@ -102,7 +110,10 @@ struct RuleCondition: Codable, Sendable {
             case .isOrphaned: "Is Orphaned"
             case .isZombie: "Is Zombie"
             case .noTTY: "No Terminal"
+            case .hasSockets: "Has Sockets"
             case .noSockets: "No Sockets"
+            case .hasOwningApp: "Has Owning App"
+            case .noOwningApp: "No Owning App"
             }
         }
 
@@ -135,8 +146,17 @@ struct RuleCondition: Codable, Sendable {
         case .noTTY:
             return !process.hasTTY
 
+        case .hasSockets:
+            return process.hasSockets
+
         case .noSockets:
-            return true // deferred
+            return !process.hasSockets
+
+        case .hasOwningApp:
+            return process.hasOwningApp
+
+        case .noOwningApp:
+            return !process.hasOwningApp
         }
     }
 }

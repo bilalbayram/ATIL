@@ -60,6 +60,10 @@ enum ClassificationReason: String, Sendable, CaseIterable {
     case highMemoryLowActivity
     case blocklistMatch
     case unknownBinary
+    case launchdManaged
+    case noOwningApp
+    case userRuleMarkedRedundant
+    case userRuleMarkedSuspicious
 
     // Healthy signals
     case protectedProcess
@@ -71,7 +75,8 @@ enum ClassificationReason: String, Sendable, CaseIterable {
     var isRedundantSignal: Bool {
         switch self {
         case .orphanedNoParent, .longIdle, .noListeningSockets, .noTTY,
-             .highMemoryLowActivity, .blocklistMatch, .unknownBinary:
+             .highMemoryLowActivity, .blocklistMatch, .unknownBinary,
+             .noOwningApp, .userRuleMarkedRedundant:
             true
         default:
             false
@@ -88,6 +93,7 @@ struct ATILProcess: Identifiable, Sendable {
     let pid: pid_t
     let ppid: pid_t
     let uid: uid_t
+    let gid: gid_t
     let name: String
     let executablePath: String?
     let startTime: Date
@@ -95,11 +101,15 @@ struct ATILProcess: Identifiable, Sendable {
     let virtualMemory: UInt64
     let cpuTimeUser: TimeInterval
     let cpuTimeSystem: TimeInterval
+    let cpuPercent: Double
     let threadCount: Int32
+    let niceValue: Int32
     let processState: ProcessState
     let isOrphaned: Bool
     let parentAlive: Bool
     let hasTTY: Bool
+    let hasSockets: Bool
+    let hasOwningApp: Bool
     let bundleIdentifier: String?
     let bundlePath: String?
 

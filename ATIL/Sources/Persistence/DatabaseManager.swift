@@ -94,7 +94,7 @@ final class DatabaseManager: Sendable {
                 t.column("conditionJSON", .text).notNull() // JSON array of conditions
                 t.column("contextAppBundleId", .text) // optional: another app must/must not be running
                 t.column("contextAppMustBeRunning", .boolean) // true = must be running, false = must not
-                t.column("action", .text).notNull() // "kill", "suspend", "markRedundant"
+                t.column("action", .text).notNull() // "kill", "suspend", "markRedundant", "markSuspicious"
                 t.column("cooldownSeconds", .integer).notNull().defaults(to: 600) // 10 min default
                 t.column("enabled", .boolean).notNull().defaults(to: true)
                 t.column("createdAt", .datetime).notNull()
@@ -109,6 +109,26 @@ final class DatabaseManager: Sendable {
                 t.column("actionTaken", .text).notNull()
                 t.column("timestamp", .datetime).notNull()
             }
+        }
+
+        migrator.registerMigration("v3_history_preferences") { db in
+            try db.alter(table: "killHistory") { t in
+                t.add(column: "relaunchKind", .text)
+                t.add(column: "launchdLabel", .text)
+                t.add(column: "launchdDomain", .text)
+            }
+
+            try db.create(table: "preferences", ifNotExists: true) { t in
+                t.column("key", .text).primaryKey()
+                t.column("value", .text).notNull()
+            }
+
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO preferences (key, value) VALUES
+                    ('pollingIntervalSeconds', '60'),
+                    ('relaunchRetentionScope', 'session'),
+                    ('showGrouped', 'true');
+            """)
         }
 
         return migrator

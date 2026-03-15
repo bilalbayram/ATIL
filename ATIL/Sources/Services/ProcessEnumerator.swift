@@ -58,6 +58,14 @@ struct ProcessEnumerator: Sendable {
         return map
     }
 
+    func buildRunningAppBundlePaths() -> Set<String> {
+        Set(
+            NSWorkspace.shared.runningApplications.compactMap { app in
+                app.bundleURL?.path
+            }
+        )
+    }
+
     // MARK: - Bundle Resolution
 
     func findBundle(forPath path: String) -> Bundle? {
@@ -79,12 +87,32 @@ struct ProcessEnumerator: Sendable {
         let alivePIDs: Set<pid_t>
         let previousIdleTimes: [ProcessIdentity: Date]
         let previousCPUTimes: [ProcessIdentity: TimeInterval]
+        let previousSeenTimes: [ProcessIdentity: Date]
         let launchdMap: [String: LaunchdJobInfo]
+    }
+
+    func hasSocketFDs(pid: pid_t) -> Bool {
+        let bufferSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        guard bufferSize > 0 else { return false }
+
+        let fdInfoSize = Int32(MemoryLayout<proc_fdinfo>.size)
+        let count = Int(bufferSize / fdInfoSize)
+        guard count > 0 else { return false }
+
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: count)
+        let actualSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, bufferSize)
+        guard actualSize > 0 else { return false }
+
+        let actualCount = Int(actualSize / fdInfoSize)
+        return fds.prefix(actualCount).contains { fd in
+            fd.proc_fdtype == UInt32(PROX_FDTYPE_SOCKET)
+        }
     }
 
     func buildProcess(
         pid: pid_t,
         appMap: [pid_t: NSRunningApplication],
+        runningAppBundlePaths: Set<String>,
         context: EnumerationContext
     ) -> ATILProcess? {
         guard let bsdInfo = getBSDInfo(pid: pid) else { return nil }
@@ -107,7 +135,9 @@ struct ProcessEnumerator: Sendable {
 
         let ppid = pid_t(bsdInfo.pbi_ppid)
         let uid = bsdInfo.pbi_uid
+        let gid = bsdInfo.pbi_gid
         let hasTTY = bsdInfo.e_tdev != 0 && bsdInfo.e_tdev != UInt32(bitPattern: -1)
+        let hasSockets = hasSocketFDs(pid: pid)
 
         let processState: ProcessState = {
             let status = bsdInfo.pbi_status
@@ -129,16 +159,20 @@ struct ProcessEnumerator: Sendable {
             TimeInterval($0.pti_total_system) / 1_000_000_000
         } ?? 0
         let threadCount = taskInfo.map { Int32($0.pti_threadnum) } ?? 0
+        let niceValue = Int32(bsdInfo.pbi_nice)
 
         let isOrphaned = ppid == 1 && pid != 1
         let parentAlive = context.alivePIDs.contains(ppid)
 
         // Bundle resolution
         let runningApp = appMap[pid]
+        let resolvedBundle = path.flatMap { findBundle(forPath: $0) }
         let bundleIdentifier = runningApp?.bundleIdentifier
-            ?? path.flatMap { findBundle(forPath: $0)?.bundleIdentifier }
+            ?? resolvedBundle?.bundleIdentifier
         let bundlePath = runningApp?.bundleURL?.path
-            ?? path.flatMap { findBundle(forPath: $0)?.bundlePath }
+            ?? resolvedBundle?.bundlePath
+        let hasOwningApp = runningApp != nil
+            || bundlePath.map { runningAppBundlePaths.contains($0) } ?? false
 
         // App icon
         let appIcon: NSImage? = {
@@ -149,8 +183,15 @@ struct ProcessEnumerator: Sendable {
 
         // Idle tracking: carry forward from previous snapshot or start fresh
         let previousCPU = context.previousCPUTimes[identity] ?? 0
+        let previousSeenAt = context.previousSeenTimes[identity]
         let currentCPU = cpuTimeUser + cpuTimeSystem
         let cpuChanged = currentCPU > previousCPU + 0.01
+        let cpuPercent: Double = {
+            guard let previousSeenAt else { return 0 }
+            let elapsed = max(context.now.timeIntervalSince(previousSeenAt), 0.001)
+            let cpuDelta = max(currentCPU - previousCPU, 0)
+            return max((cpuDelta / elapsed) * 100, 0)
+        }()
 
         let idleSince: Date? = {
             if cpuChanged { return nil }
@@ -165,6 +206,7 @@ struct ProcessEnumerator: Sendable {
             pid: pid,
             ppid: ppid,
             uid: uid,
+            gid: gid,
             name: name,
             executablePath: path,
             startTime: startTime,
@@ -172,11 +214,15 @@ struct ProcessEnumerator: Sendable {
             virtualMemory: virtualMemory,
             cpuTimeUser: cpuTimeUser,
             cpuTimeSystem: cpuTimeSystem,
+            cpuPercent: cpuPercent,
             threadCount: threadCount,
+            niceValue: niceValue,
             processState: processState,
             isOrphaned: isOrphaned,
             parentAlive: parentAlive,
             hasTTY: hasTTY,
+            hasSockets: hasSockets,
+            hasOwningApp: hasOwningApp,
             bundleIdentifier: bundleIdentifier,
             bundlePath: bundlePath,
             category: .healthy, // placeholder, classifier sets this
@@ -193,6 +239,14 @@ struct ProcessEnumerator: Sendable {
     func enumerateAll(context: EnumerationContext) -> [ATILProcess] {
         let pids = listAllPIDs()
         let appMap = buildRunningAppMap()
-        return pids.compactMap { buildProcess(pid: $0, appMap: appMap, context: context) }
+        let runningAppBundlePaths = buildRunningAppBundlePaths()
+        return pids.compactMap {
+            buildProcess(
+                pid: $0,
+                appMap: appMap,
+                runningAppBundlePaths: runningAppBundlePaths,
+                context: context
+            )
+        }
     }
 }

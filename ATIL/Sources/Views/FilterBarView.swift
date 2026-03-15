@@ -27,5 +27,8 @@ struct FilterBarView: View {
         }
         .padding(8)
         .background(.bar)
+        .onChange(of: viewModel.searchFocusNonce) {
+            isSearchFocused = true
+        }
     }
 }

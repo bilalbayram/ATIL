@@ -9,7 +9,6 @@ struct InspectPanelView: View {
             if let process = viewModel.selectedProcess {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        // Header
                         HStack(spacing: 12) {
                             ProcessIconView(process: process)
                                 .frame(width: 48, height: 48)
@@ -30,29 +29,32 @@ struct InspectPanelView: View {
                             CategoryBadge(category: process.category)
                         }
 
-                        // Action buttons
                         if !process.classificationReasons.contains(.protectedProcess) {
                             ProcessActionButtons(process: process)
                         }
 
                         Divider()
 
-                        // Core info grid
                         SectionHeader("Process Info")
-                        LazyVGrid(columns: [
-                            GridItem(.flexible()),
-                            GridItem(.flexible()),
-                        ], alignment: .leading, spacing: 12) {
+                        LazyVGrid(
+                            columns: [GridItem(.flexible()), GridItem(.flexible())],
+                            alignment: .leading,
+                            spacing: 12
+                        ) {
                             InfoRow(label: "PID", value: "\(process.pid)")
                             InfoRow(label: "Parent PID", value: "\(process.ppid)")
                             InfoRow(label: "User ID", value: "\(process.uid)")
+                            InfoRow(label: "Group ID", value: "\(process.gid)")
+                            InfoRow(label: "Nice", value: "\(process.niceValue)")
                             InfoRow(label: "State", value: process.processState.rawValue.capitalized)
                             InfoRow(label: "Threads", value: "\(process.threadCount)")
                             InfoRow(label: "Started", value: inspector.formattedStartTime)
                             InfoRow(label: "Uptime", value: inspector.formattedUptime)
                             InfoRow(label: "CPU Time", value: inspector.formattedCPUTime)
+                            InfoRow(label: "CPU %", value: inspector.formattedCPUPercent)
                             InfoRow(label: "Resident Memory", value: inspector.formattedResidentMemory)
                             InfoRow(label: "Virtual Memory", value: inspector.formattedVirtualMemory)
+                            InfoRow(label: "Bundle Version", value: inspector.bundleVersion)
                         }
 
                         if let path = process.executablePath {
@@ -66,86 +68,131 @@ struct InspectPanelView: View {
                             }
                         }
 
-                        // Launchd Info
-                        if let job = process.launchdJob {
-                            Divider()
-                            SectionHeader("Launchd Job")
-                            LazyVGrid(columns: [
-                                GridItem(.flexible()),
-                                GridItem(.flexible()),
-                            ], alignment: .leading, spacing: 12) {
-                                InfoRow(label: "Label", value: job.label)
-                                InfoRow(label: "KeepAlive", value: job.keepAlive ? "Yes" : "No")
-                                InfoRow(label: "RunAtLoad", value: job.runAtLoad ? "Yes" : "No")
-                                InfoRow(label: "Will Respawn", value: job.willRespawn ? "Yes" : "No")
+                        LazyInspectionSection(
+                            title: "Launchd Info",
+                            section: .launchd,
+                            inspector: inspector
+                        ) {
+                            Task {
+                                await inspector.load(section: .launchd, launchdMap: viewModel.monitor.launchdMap)
                             }
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Plist Path")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(job.plistPath)
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
+                        } content: {
+                            if let job = inspector.inspectionData.launchdJob {
+                                LazyVGrid(
+                                    columns: [GridItem(.flexible()), GridItem(.flexible())],
+                                    alignment: .leading,
+                                    spacing: 12
+                                ) {
+                                    InfoRow(label: "Label", value: job.label)
+                                    InfoRow(label: "Domain", value: job.domain)
+                                    InfoRow(label: "KeepAlive", value: job.keepAlive ? "Yes" : "No")
+                                    InfoRow(label: "RunAtLoad", value: job.runAtLoad ? "Yes" : "No")
+                                    InfoRow(label: "Will Respawn", value: job.willRespawn ? "Yes" : "No")
+                                }
+
+                                LabeledMonospaceValue(label: "Plist Path", value: job.plistPath)
+                            } else {
+                                EmptyDetailState(message: "No launchd association found.")
                             }
                         }
 
-                        // Code Signature (loaded lazily)
-                        if let sig = inspector.inspectionData?.codeSignature {
-                            Divider()
-                            SectionHeader("Code Signature")
-                            LazyVGrid(columns: [
-                                GridItem(.flexible()),
-                                GridItem(.flexible()),
-                            ], alignment: .leading, spacing: 12) {
-                                InfoRow(label: "Signed", value: sig.isSigned ? "Yes" : "No")
-                                InfoRow(label: "Identity", value: sig.signingIdentity ?? "—")
-                                InfoRow(label: "Team ID", value: sig.teamIdentifier ?? "—")
-                                InfoRow(label: "Apple Signed", value: sig.isAppleSigned ? "Yes" : "No")
-                                InfoRow(label: "Notarized", value: sig.isNotarized ? "Yes" : "No")
+                        LazyInspectionSection(
+                            title: "Code Signature",
+                            section: .codeSignature,
+                            inspector: inspector
+                        ) {
+                            Task {
+                                await inspector.load(section: .codeSignature, launchdMap: viewModel.monitor.launchdMap)
+                            }
+                        } content: {
+                            if let signature = inspector.inspectionData.codeSignature {
+                                LazyVGrid(
+                                    columns: [GridItem(.flexible()), GridItem(.flexible())],
+                                    alignment: .leading,
+                                    spacing: 12
+                                ) {
+                                    InfoRow(label: "Signed", value: signature.isSigned ? "Yes" : "No")
+                                    InfoRow(label: "Identity", value: signature.signingIdentity ?? "—")
+                                    InfoRow(label: "Team ID", value: signature.teamIdentifier ?? "—")
+                                    InfoRow(label: "Code Identifier", value: signature.codeIdentifier ?? "—")
+                                    InfoRow(label: "Apple Signed", value: signature.isAppleSigned ? "Yes" : "No")
+                                    InfoRow(label: "Notarized", value: signature.isNotarized ? "Yes" : "No")
+                                }
+                            } else {
+                                EmptyDetailState(message: "Signature details are unavailable for this process.")
                             }
                         }
 
-                        // Listening Ports
-                        if let ports = inspector.inspectionData?.listeningPorts, !ports.isEmpty {
-                            Divider()
-                            SectionHeader("Listening Ports")
-                            ForEach(ports) { port in
-                                HStack {
-                                    Text(":\(port.port)")
-                                        .font(.body.monospaced())
-                                    Spacer()
-                                    Text(port.family)
+                        LazyInspectionSection(
+                            title: "Network",
+                            section: .network,
+                            inspector: inspector
+                        ) {
+                            Task {
+                                await inspector.load(section: .network, launchdMap: viewModel.monitor.launchdMap)
+                            }
+                        } content: {
+                            NetworkSectionContent(data: inspector.inspectionData)
+                        }
+
+                        LazyInspectionSection(
+                            title: "Open Files",
+                            section: .openFiles,
+                            inspector: inspector
+                        ) {
+                            Task {
+                                await inspector.load(section: .openFiles, launchdMap: viewModel.monitor.launchdMap)
+                            }
+                        } content: {
+                            if let files = inspector.inspectionData.openFiles, !files.isEmpty {
+                                ForEach(files.prefix(50)) { file in
+                                    HStack(spacing: 6) {
+                                        Text("fd \(file.fd)")
+                                            .font(.caption.monospaced())
+                                            .foregroundStyle(.tertiary)
+                                            .frame(width: 40, alignment: .trailing)
+                                        Text(file.path)
+                                            .font(.caption.monospaced())
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                                if files.count > 50 {
+                                    Text("... and \(files.count - 50) more")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
+                            } else {
+                                EmptyDetailState(message: "No open files were reported.")
                             }
                         }
 
-                        // Open Files (loaded lazily, show first 50)
-                        if let files = inspector.inspectionData?.openFiles, !files.isEmpty {
-                            Divider()
-                            SectionHeader("Open Files (\(files.count))")
-                            ForEach(files.prefix(50)) { file in
-                                HStack(spacing: 6) {
-                                    Text("fd \(file.fd)")
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.tertiary)
-                                        .frame(width: 40, alignment: .trailing)
-                                    Text(file.path)
-                                        .font(.caption.monospaced())
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .textSelection(.enabled)
+                        LazyInspectionSection(
+                            title: "Energy",
+                            section: .energy,
+                            inspector: inspector
+                        ) {
+                            Task {
+                                await inspector.load(section: .energy, launchdMap: viewModel.monitor.launchdMap)
+                            }
+                        } content: {
+                            if let usage = inspector.inspectionData.resourceUsage {
+                                LazyVGrid(
+                                    columns: [GridItem(.flexible()), GridItem(.flexible())],
+                                    alignment: .leading,
+                                    spacing: 12
+                                ) {
+                                    InfoRow(label: "Idle Wakeups", value: "\(usage.idleWakeUps)")
+                                    InfoRow(label: "Interrupt Wakeups", value: "\(usage.interruptWakeUps)")
+                                    InfoRow(label: "Bytes Read", value: formatBytes(usage.bytesRead))
+                                    InfoRow(label: "Bytes Written", value: formatBytes(usage.bytesWritten))
                                 }
-                            }
-                            if files.count > 50 {
-                                Text("... and \(files.count - 50) more")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            } else {
+                                EmptyDetailState(message: "Resource usage is unavailable for this process.")
                             }
                         }
 
-                        // Classification reasons
                         if !process.classificationReasons.isEmpty {
                             Divider()
                             SectionHeader("Classification Signals")
@@ -164,17 +211,6 @@ struct InspectPanelView: View {
                             }
                         }
 
-                        // Loading indicator
-                        if inspector.isLoadingInspection {
-                            HStack {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("Loading inspection data...")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
                         Spacer()
                     }
                     .padding()
@@ -182,15 +218,10 @@ struct InspectPanelView: View {
                 .onChange(of: viewModel.selectedProcess?.identity) {
                     inspector.selectedProcess = viewModel.selectedProcess
                     inspector.clearInspection()
-                    Task {
-                        await inspector.loadInspection(launchdMap: viewModel.monitor.launchdMap)
-                    }
                 }
                 .onAppear {
                     inspector.selectedProcess = viewModel.selectedProcess
-                    Task {
-                        await inspector.loadInspection(launchdMap: viewModel.monitor.launchdMap)
-                    }
+                    inspector.clearInspection()
                 }
             }
         }
@@ -198,7 +229,130 @@ struct InspectPanelView: View {
     }
 }
 
-// MARK: - Helper Views
+private struct LazyInspectionSection<Content: View>: View {
+    let title: String
+    let section: InspectionSection
+    let inspector: ProcessInspectorViewModel
+    let onLoad: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Divider()
+        HStack {
+            SectionHeader(title)
+            Spacer()
+            if inspector.isLoading(section) {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            if !inspector.hasLoaded(section) {
+                Button("Load", action: onLoad)
+                    .buttonStyle(.bordered)
+            }
+        }
+
+        if inspector.hasLoaded(section) {
+            content()
+        } else {
+            Text("Loaded on demand.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct NetworkSectionContent: View {
+    let data: ProcessInspectionData
+
+    var body: some View {
+        if let listeningPorts = data.listeningPorts, !listeningPorts.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Listening Ports")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(listeningPorts) { port in
+                    HStack {
+                        Text(":\(port.port)")
+                            .font(.body.monospaced())
+                        Spacer()
+                        Text(port.family)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+
+        if let connections = data.establishedConnections, !connections.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Connections")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(connections) { connection in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(connection.localAddress):\(connection.localPort) → \(connection.remoteAddress):\(connection.remotePort)")
+                            .font(.caption.monospaced())
+                        Text("\(connection.family) • \(connection.state)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+
+        if let unixSockets = data.unixDomainSockets, !unixSockets.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Unix Domain Sockets")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(unixSockets) { socket in
+                    HStack(spacing: 6) {
+                        Text("fd \(socket.fd)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 40, alignment: .trailing)
+                        Text(socket.path)
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+        }
+
+        if (data.listeningPorts ?? []).isEmpty
+            && (data.establishedConnections ?? []).isEmpty
+            && (data.unixDomainSockets ?? []).isEmpty {
+            EmptyDetailState(message: "No network activity was reported.")
+        }
+    }
+}
+
+private struct EmptyDetailState: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+}
+
+private struct LabeledMonospaceValue: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+        }
+    }
+}
 
 private struct SectionHeader: View {
     let title: String
@@ -251,7 +405,6 @@ private struct CategoryBadge: View {
     }
 }
 
-/// Action buttons for a single process in the inspect panel.
 private struct ProcessActionButtons: View {
     let process: ATILProcess
     @Environment(ProcessListViewModel.self) private var viewModel
@@ -289,14 +442,12 @@ private struct ProcessActionButtons: View {
             }
             .buttonStyle(.bordered)
 
-            if viewModel.canRelaunchSelected {
-                Button {
-                    viewModel.relaunchSelected()
-                } label: {
-                    Label("Relaunch", systemImage: "arrow.counterclockwise")
-                }
-                .buttonStyle(.bordered)
+            Button {
+                viewModel.createRuleFromSelected()
+            } label: {
+                Label("Create Rule", systemImage: "bolt.badge.plus")
             }
+            .buttonStyle(.bordered)
 
             Spacer()
         }
@@ -323,24 +474,30 @@ struct FlowLayout: Layout {
     }
 
     private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
-        let maxWidth = proposal.width ?? .infinity
+        let maxWidth = proposal.width ?? .greatestFiniteMagnitude
         var positions: [CGPoint] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth && x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
+            if currentX + size.width > maxWidth, currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + spacing
+                lineHeight = 0
             }
-            positions.append(CGPoint(x: x, y: y))
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
+
+            positions.append(CGPoint(x: currentX, y: currentY))
+            currentX += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+            usedWidth = max(usedWidth, currentX)
         }
 
-        return (CGSize(width: maxWidth, height: y + rowHeight), positions)
+        return (
+            CGSize(width: min(usedWidth, maxWidth), height: currentY + lineHeight),
+            positions
+        )
     }
 }

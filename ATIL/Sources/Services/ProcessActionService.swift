@@ -28,35 +28,58 @@ struct ProcessActionService: Sendable {
     /// Kill a process: SIGTERM first, then SIGKILL after timeout.
     /// Returns the resident memory of the process (for stats tracking).
     func kill(process: ATILProcess) async throws -> UInt64 {
-        guard process.isUserOwned else { throw ActionError.notUserOwned }
-
         let pid = process.pid
         let memory = process.residentMemory
+        let usesHelper = !process.isUserOwned
 
         // Check process still exists
-        guard Darwin.kill(pid, 0) == 0 else { throw ActionError.processNotFound }
+        if usesHelper {
+            guard await HelperClient.shared.isHelperInstalled else {
+                throw ActionError.notUserOwned
+            }
+            _ = try await HelperClient.shared.sendSignal(0, toPID: pid)
+        } else {
+            guard Darwin.kill(pid, 0) == 0 else { throw ActionError.processNotFound }
+        }
 
         // Send SIGTERM
-        guard Darwin.kill(pid, SIGTERM) == 0 else {
-            throw ActionError.signalFailed(errno)
+        if usesHelper {
+            _ = try await HelperClient.shared.sendSignal(SIGTERM, toPID: pid)
+        } else {
+            guard Darwin.kill(pid, SIGTERM) == 0 else {
+                throw ActionError.signalFailed(errno)
+            }
         }
 
         // Wait up to 5 seconds for graceful exit
         for _ in 0..<50 {
             try? await Task.sleep(for: .milliseconds(100))
-            if Darwin.kill(pid, 0) != 0 {
+            if usesHelper {
+                if (try? await HelperClient.shared.sendSignal(0, toPID: pid)) != true {
+                    recordKill(process: process, action: "kill", result: "success", memoryFreed: memory)
+                    return memory
+                }
+            } else if Darwin.kill(pid, 0) != 0 {
                 recordKill(process: process, action: "kill", result: "success", memoryFreed: memory)
                 return memory
             }
         }
 
         // Force kill if still alive
-        if Darwin.kill(pid, 0) == 0 {
+        if usesHelper {
+            _ = try await HelperClient.shared.sendSignal(SIGKILL, toPID: pid)
+            try? await Task.sleep(for: .milliseconds(200))
+        } else if Darwin.kill(pid, 0) == 0 {
             Darwin.kill(pid, SIGKILL)
             try? await Task.sleep(for: .milliseconds(200))
         }
 
-        let success = Darwin.kill(pid, 0) != 0
+        let success: Bool
+        if usesHelper {
+            success = (try? await HelperClient.shared.sendSignal(0, toPID: pid)) != true
+        } else {
+            success = Darwin.kill(pid, 0) != 0
+        }
         recordKill(
             process: process,
             action: "kill",
@@ -81,36 +104,60 @@ struct ProcessActionService: Sendable {
         Darwin.kill(pid, SIGCONT) == 0
     }
 
-    /// Relaunch a previously killed process.
-    func relaunch(process: ATILProcess) throws {
-        // Try app bundle relaunch
-        if let bundlePath = process.bundlePath {
+    /// Relaunch a previously killed process from kill history.
+    func relaunch(record: KillHistoryRecord) throws {
+        switch record.relaunchKind {
+        case .appBundle:
+            guard let bundlePath = record.relaunchToken else {
+                throw ActionError.relaunchNotSupported
+            }
             let url = URL(fileURLWithPath: bundlePath)
             NSWorkspace.shared.openApplication(
                 at: url,
                 configuration: NSWorkspace.OpenConfiguration()
             )
-            return
-        }
+        case .launchdJob:
+            guard let plistPath = record.relaunchToken,
+                  let label = record.launchdLabel,
+                  let domain = record.launchdDomain
+            else {
+                throw ActionError.relaunchNotSupported
+            }
 
-        // Try launchd relaunch
-        if let job = process.launchdJob {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            task.arguments = ["load", job.plistPath]
-            try task.run()
-            task.waitUntilExit()
-            return
-        }
+            let serviceTarget = "\(domain)/\(label)"
+            try runLaunchctl(arguments: ["enable", serviceTarget])
+            try runLaunchctl(arguments: ["bootstrap", domain, plistPath])
+            try? runLaunchctl(arguments: ["kickstart", "-k", serviceTarget])
 
-        throw ActionError.relaunchNotSupported
+        case .none:
+            throw ActionError.relaunchNotSupported
+        }
     }
 
     // MARK: - Private
 
     private func recordKill(process: ATILProcess, action: String, result: String, memoryFreed: UInt64) {
-        // Determine relaunch token
-        let relaunchToken = process.bundlePath ?? process.launchdJob?.plistPath
+        let relaunchKind: KillHistoryRecord.RelaunchKind?
+        let relaunchToken: String?
+        let launchdLabel: String?
+        let launchdDomain: String?
+
+        if let bundlePath = process.bundlePath {
+            relaunchKind = .appBundle
+            relaunchToken = bundlePath
+            launchdLabel = nil
+            launchdDomain = nil
+        } else if let job = process.launchdJob {
+            relaunchKind = .launchdJob
+            relaunchToken = job.plistPath
+            launchdLabel = job.label
+            launchdDomain = job.domain
+        } else {
+            relaunchKind = nil
+            relaunchToken = nil
+            launchdLabel = nil
+            launchdDomain = nil
+        }
 
         let record = KillHistoryRecord(
             timestamp: Date(),
@@ -122,7 +169,10 @@ struct ProcessActionService: Sendable {
             action: action,
             result: result,
             memoryFreed: Int64(memoryFreed),
-            relaunchToken: relaunchToken
+            relaunchToken: relaunchToken,
+            relaunchKind: relaunchKind,
+            launchdLabel: launchdLabel,
+            launchdDomain: launchdDomain
         )
 
         try? killHistoryRepo.record(record)
@@ -130,6 +180,18 @@ struct ProcessActionService: Sendable {
         if result == "success" && action == "kill" {
             try? statsRepo.incrementKills()
             try? statsRepo.incrementMemoryFreed(by: Int64(memoryFreed))
+        }
+    }
+
+    private func runLaunchctl(arguments: [String]) throws {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        task.arguments = arguments
+        try task.run()
+        task.waitUntilExit()
+
+        guard task.terminationStatus == 0 else {
+            throw ActionError.relaunchNotSupported
         }
     }
 }

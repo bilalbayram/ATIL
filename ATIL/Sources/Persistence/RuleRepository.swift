@@ -20,7 +20,7 @@ struct RuleRepository: Sendable {
 
     func save(_ rule: AutoRule) throws -> AutoRule {
         try db.dbPool.write { db in
-            var r = rule
+            let r = rule
             try r.save(db)
             return r
         }
@@ -45,7 +45,7 @@ struct RuleRepository: Sendable {
 
     func recordEvent(ruleId: Int64, processIdentity: String, action: String) throws {
         try db.dbPool.write { db in
-            var event = RuleEvent(
+            let event = RuleEvent(
                 ruleId: ruleId,
                 processIdentity: processIdentity,
                 actionTaken: action,

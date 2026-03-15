@@ -14,10 +14,12 @@ final class ProcessMonitor {
 
     private var pollingTask: Task<Void, Never>?
     var lastRuleResults: [RuleEngine.RuleResult] = []
+    var focusedProcessID: ProcessIdentity?
 
     // Carry-forward state for idle tracking
     private var previousIdleTimes: [ProcessIdentity: Date] = [:]
     private var previousCPUTimes: [ProcessIdentity: TimeInterval] = [:]
+    private var previousSeenTimes: [ProcessIdentity: Date] = [:]
 
     // Cached launchd map — refreshed each scan
     private(set) var launchdMap: [String: LaunchdJobInfo] = [:]
@@ -29,6 +31,7 @@ final class ProcessMonitor {
 
         let idleTimes = previousIdleTimes
         let cpuTimes = previousCPUTimes
+        let seenTimes = previousSeenTimes
         let enumerator = self.enumerator
         let launchdScanner = self.launchdScanner
 
@@ -44,6 +47,7 @@ final class ProcessMonitor {
                 alivePIDs: alivePIDs,
                 previousIdleTimes: idleTimes,
                 previousCPUTimes: cpuTimes,
+                previousSeenTimes: seenTimes,
                 launchdMap: launchdMap
             )
 
@@ -52,28 +56,41 @@ final class ProcessMonitor {
 
         launchdMap = rawProcesses.1
 
+        let overrides = ruleEngine.categoryOverrides(for: rawProcesses.0)
+
         // Classify on main actor (SafetyGate is MainActor-isolated)
-        let classified = rawProcesses.0.map { classifier.classify($0, safetyGate: safetyGate) }
+        let classified = rawProcesses.0.map { process in
+            classifier.classify(
+                process,
+                safetyGate: safetyGate,
+                categoryOverride: overrides[process.identity]
+            )
+        }
 
         // Update carry-forward state
         var newIdleTimes: [ProcessIdentity: Date] = [:]
         var newCPUTimes: [ProcessIdentity: TimeInterval] = [:]
+        var newSeenTimes: [ProcessIdentity: Date] = [:]
         for p in classified {
             if let idle = p.idleSince {
                 newIdleTimes[p.identity] = idle
             }
             newCPUTimes[p.identity] = p.cpuTimeTotal
+            newSeenTimes[p.identity] = p.lastSeen
         }
         previousIdleTimes = newIdleTimes
         previousCPUTimes = newCPUTimes
+        previousSeenTimes = newSeenTimes
 
         snapshot = classified
 
         // Evaluate auto-action rules
         lastRuleResults = await ruleEngine.evaluate(processes: classified)
         if !lastRuleResults.isEmpty {
-            // Re-scan to reflect rule actions
-            // Don't recurse — just refresh the snapshot
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(250))
+                await self?.scan()
+            }
         }
     }
 
@@ -84,8 +101,15 @@ final class ProcessMonitor {
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.scan()
-                // Adaptive: shorter interval if rules fired recently
-                let nextInterval = (self?.lastRuleResults.isEmpty ?? true) ? interval : max(interval / 6, 10)
+                // Focused watch: selected/suspicious processes are refreshed more frequently.
+                let nextInterval: TimeInterval
+                if self?.focusedProcessID != nil {
+                    nextInterval = 10
+                } else if self?.lastRuleResults.isEmpty == false {
+                    nextInterval = max(interval / 6, 10)
+                } else {
+                    nextInterval = interval
+                }
                 try? await Task.sleep(for: .seconds(nextInterval))
             }
         }

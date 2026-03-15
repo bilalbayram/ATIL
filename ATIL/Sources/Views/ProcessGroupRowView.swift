@@ -4,11 +4,24 @@ import SwiftUI
 /// Can be expanded to show individual processes.
 struct ProcessGroupRowView: View {
     let group: ProcessGroup
-    @State private var isExpanded = false
+    @Environment(ProcessListViewModel.self) private var viewModel
+
+    private var isExpanded: Binding<Bool> {
+        Binding(
+            get: { viewModel.expandedGroupIDs.contains(group.id) },
+            set: { expanded in
+                if expanded {
+                    viewModel.expandedGroupIDs.insert(group.id)
+                } else {
+                    viewModel.expandedGroupIDs.remove(group.id)
+                }
+            }
+        )
+    }
 
     var body: some View {
         if group.isGrouped {
-            DisclosureGroup(isExpanded: $isExpanded) {
+            DisclosureGroup(isExpanded: isExpanded) {
                 ForEach(group.processes) { process in
                     ProcessRowView(process: process)
                         .tag(process.identity)

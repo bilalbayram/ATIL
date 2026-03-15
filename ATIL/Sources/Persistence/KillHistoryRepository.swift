@@ -5,6 +5,11 @@ import GRDB
 struct KillHistoryRecord: Codable, FetchableRecord, PersistableRecord, Identifiable, Sendable {
     static let databaseTableName = "killHistory"
 
+    enum RelaunchKind: String, Codable, Sendable {
+        case appBundle
+        case launchdJob
+    }
+
     var id: Int64?
     let timestamp: Date
     let pid: Int32
@@ -16,9 +21,16 @@ struct KillHistoryRecord: Codable, FetchableRecord, PersistableRecord, Identifia
     let result: String // "success" or "failed"
     let memoryFreed: Int64
     let relaunchToken: String? // bundlePath or launchd label for relaunch
+    let relaunchKind: RelaunchKind?
+    let launchdLabel: String?
+    let launchdDomain: String?
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
+    }
+
+    var isSuccessfulKill: Bool {
+        action == "kill" && result == "success"
     }
 }
 
@@ -28,7 +40,7 @@ struct KillHistoryRepository: Sendable {
 
     func record(_ entry: KillHistoryRecord) throws {
         try db.dbPool.write { db in
-            var record = entry
+            let record = entry
             try record.insert(db)
         }
     }

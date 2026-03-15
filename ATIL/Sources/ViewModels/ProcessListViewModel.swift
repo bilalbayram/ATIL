@@ -8,22 +8,35 @@ final class ProcessListViewModel {
     private let safetyGate = SafetyGate.shared
     private let statsRepo = StatsRepository(db: DatabaseManager.shared)
     private let killHistoryRepo = KillHistoryRepository(db: DatabaseManager.shared)
+    private let preferencesRepo = PreferencesRepository(db: DatabaseManager.shared)
 
     // State
     var searchText = ""
-    var selectedProcessID: ProcessIdentity?
+    var searchFocusNonce = 0
+    var selectedProcessID: ProcessIdentity? {
+        didSet {
+            monitor.focusedProcessID = selectedProcessID
+        }
+    }
     var selectedProcessIDs: Set<ProcessIdentity> = []
     var expandedCategories: Set<ProcessCategory> = [.redundant, .suspicious, .quarantined]
-    var showGrouped = true
+    var expandedGroupIDs: Set<String> = []
+    var showGrouped = true {
+        didSet {
+            try? preferencesRepo.set(showGrouped ? "true" : "false", forKey: "showGrouped")
+        }
+    }
     var lastError: String?
     var showingRuleBuilder = false
     var ruleBuilderRule: AutoRule?
     var showingLaunchdConfirmation = false
     var launchdConfirmProcess: ATILProcess?
+    let sessionStartedAt = Date()
 
     // Session stats
     var sessionKillCount = 0
     var sessionMemoryFreed: UInt64 = 0
+    var pollingIntervalSeconds = 60
 
     // Lifetime stats (from SQLite)
     var lifetimeKills: Int64 = 0
@@ -31,6 +44,7 @@ final class ProcessListViewModel {
 
     init(monitor: ProcessMonitor? = nil) {
         self.monitor = monitor ?? ProcessMonitor()
+        loadPreferences()
         loadLifetimeStats()
     }
 
@@ -82,12 +96,6 @@ final class ProcessListViewModel {
         selectedProcess?.processState == .suspended
     }
 
-    /// Whether the selected process can be relaunched after kill.
-    var canRelaunchSelected: Bool {
-        guard let process = selectedProcess else { return false }
-        return process.bundlePath != nil || process.launchdJob != nil
-    }
-
     // MARK: - Actions
 
     func refresh() async {
@@ -125,22 +133,20 @@ final class ProcessListViewModel {
     }
 
     func killAndDisableRespawn(process: ATILProcess) async {
-        await performKill(process: process)
-
-        // Disable launchd job
         if let job = process.launchdJob {
             do {
-                try await HelperClient.shared.disableLaunchdJob(label: job.label)
+                try await HelperClient.shared.disableLaunchdJob(label: job.label, domain: job.domain)
             } catch {
-                // If helper not installed, try launchctl directly (user-level jobs only)
+                let serviceTarget = "\(job.domain)/\(job.label)"
                 let task = Process()
                 task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-                task.arguments = ["bootout", "gui/\(getuid())/\(job.label)"]
+                task.arguments = ["disable", serviceTarget]
                 try? task.run()
                 task.waitUntilExit()
             }
         }
 
+        await performKill(process: process)
         showingLaunchdConfirmation = false
         launchdConfirmProcess = nil
     }
@@ -177,10 +183,26 @@ final class ProcessListViewModel {
         }
     }
 
-    func relaunchSelected() {
-        guard let process = selectedProcess else { return }
+    func toggleSuspendResumeForSelection() {
+        if selectedProcessIDs.count == 1 {
+            toggleSuspendResume()
+            return
+        }
+
+        for process in selectedProcesses {
+            if process.processState == .suspended {
+                _ = actionService.resume(pid: process.pid)
+            } else if !safetyGate.isProtected(process), process.isUserOwned {
+                try? actionService.suspend(process: process)
+            }
+        }
+
+        Task { await monitor.scan() }
+    }
+
+    func relaunch(_ record: KillHistoryRecord) {
         do {
-            try actionService.relaunch(process: process)
+            try actionService.relaunch(record: record)
         } catch {
             lastError = error.localizedDescription
         }
@@ -215,8 +237,29 @@ final class ProcessListViewModel {
         selectedProcessIDs.count > 1
     }
 
-    func selectAll() {
-        selectedProcessIDs = Set(filteredProcesses.map(\.identity))
+    var visibleProcesses: [ATILProcess] {
+        if !showGrouped {
+            return categorizedProcesses
+                .filter { expandedCategories.contains($0.category) }
+                .flatMap(\.processes)
+        }
+
+        return categorizedProcesses
+            .filter { expandedCategories.contains($0.category) }
+            .flatMap { group in
+                let categoryGroups = groupedProcesses[group.category] ?? []
+                return categoryGroups.flatMap { processGroup in
+                    if processGroup.isGrouped {
+                        return expandedGroupIDs.contains(processGroup.id) ? processGroup.processes : []
+                    }
+                    return processGroup.processes
+                }
+            }
+    }
+
+    func selectAllVisible() {
+        selectedProcessIDs = Set(visibleProcesses.map(\.identity))
+        selectedProcessID = selectedProcessIDs.count == 1 ? selectedProcessIDs.first : nil
     }
 
     func clearSelection() {
@@ -243,11 +286,6 @@ final class ProcessListViewModel {
     }
 
     func suspendAllSelected() {
-        // Single selection → route through suspendSelected for protection check
-        if selectedProcessIDs.count == 1 {
-            suspendSelected()
-            return
-        }
         for process in selectedProcesses {
             guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
             try? actionService.suspend(process: process)
@@ -269,7 +307,7 @@ final class ProcessListViewModel {
     }
 
     func startMonitoring() {
-        monitor.startPolling()
+        monitor.startPolling(interval: TimeInterval(pollingIntervalSeconds))
         Task { await monitor.scan() }
     }
 
@@ -277,10 +315,28 @@ final class ProcessListViewModel {
         monitor.stopPolling()
     }
 
+    func requestSearchFocus() {
+        searchFocusNonce += 1
+    }
+
+    func recentHistory(limit: Int = 100) -> [KillHistoryRecord] {
+        (try? killHistoryRepo.recentHistory(limit: limit)) ?? []
+    }
+
+    func canRelaunch(_ record: KillHistoryRecord) -> Bool {
+        guard record.isSuccessfulKill, record.relaunchKind != nil else { return false }
+        return record.timestamp >= sessionStartedAt
+    }
+
     // MARK: - Private
 
     private func loadLifetimeStats() {
         lifetimeKills = (try? statsRepo.totalKills()) ?? 0
         lifetimeMemoryFreed = (try? statsRepo.totalMemoryFreed()) ?? 0
+    }
+
+    private func loadPreferences() {
+        showGrouped = (try? preferencesRepo.bool(forKey: "showGrouped", defaultValue: true)) ?? true
+        pollingIntervalSeconds = (try? preferencesRepo.int(forKey: "pollingIntervalSeconds", defaultValue: 60)) ?? 60
     }
 }

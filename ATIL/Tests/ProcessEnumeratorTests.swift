@@ -37,10 +37,16 @@ struct ProcessEnumeratorTests {
             alivePIDs: Set(pids),
             previousIdleTimes: [:],
             previousCPUTimes: [:],
+            previousSeenTimes: [:],
             launchdMap: [:]
         )
         let appMap = enumerator.buildRunningAppMap()
-        let process = enumerator.buildProcess(pid: selfPID, appMap: appMap, context: context)
+        let process = enumerator.buildProcess(
+            pid: selfPID,
+            appMap: appMap,
+            runningAppBundlePaths: enumerator.buildRunningAppBundlePaths(),
+            context: context
+        )
         #expect(process != nil, "Should be able to build a process for our own PID")
         #expect(process?.pid == selfPID)
     }

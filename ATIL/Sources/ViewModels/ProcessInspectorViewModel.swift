@@ -4,8 +4,9 @@ import Foundation
 @MainActor
 final class ProcessInspectorViewModel {
     var selectedProcess: ATILProcess?
-    var inspectionData: ProcessInspectionData?
-    var isLoadingInspection = false
+    var inspectionData = ProcessInspectionData()
+    var loadingSections: Set<InspectionSection> = []
+    var loadedSections: Set<InspectionSection> = []
 
     private let inspector = ProcessInspector()
 
@@ -19,8 +20,7 @@ final class ProcessInspectorViewModel {
 
     var formattedUptime: String {
         guard let process = selectedProcess else { return "—" }
-        let interval = Date().timeIntervalSince(process.startTime)
-        return formatDuration(interval)
+        return formatDuration(Date().timeIntervalSince(process.startTime))
     }
 
     var formattedCPUTime: String {
@@ -38,24 +38,48 @@ final class ProcessInspectorViewModel {
         return formatBytes(process.virtualMemory)
     }
 
-    /// Load expensive inspection data on demand.
-    func loadInspection(launchdMap: [String: LaunchdJobInfo]) async {
-        guard let process = selectedProcess else { return }
-        isLoadingInspection = true
-        defer { isLoadingInspection = false }
+    var formattedCPUPercent: String {
+        guard let process = selectedProcess else { return "—" }
+        return String(format: "%.1f%%", process.cpuPercent)
+    }
+
+    var bundleVersion: String {
+        guard let bundlePath = selectedProcess?.bundlePath,
+              let bundle = Bundle(path: bundlePath)
+        else { return "—" }
+
+        return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+            ?? "—"
+    }
+
+    func isLoading(_ section: InspectionSection) -> Bool {
+        loadingSections.contains(section)
+    }
+
+    func hasLoaded(_ section: InspectionSection) -> Bool {
+        loadedSections.contains(section)
+    }
+
+    func load(section: InspectionSection, launchdMap: [String: LaunchdJobInfo]) async {
+        guard let process = selectedProcess, !loadingSections.contains(section) else { return }
+
+        loadingSections.insert(section)
+        defer { loadingSections.remove(section) }
 
         let inspector = self.inspector
         let result = await Task.detached {
-            inspector.inspect(process: process, launchdMap: launchdMap)
+            inspector.load(section: section, process: process, launchdMap: launchdMap)
         }.value
 
-        // Only apply if still viewing the same process
-        if selectedProcess?.identity == process.identity {
-            inspectionData = result
-        }
+        guard selectedProcess?.identity == process.identity else { return }
+        inspectionData.merge(result)
+        loadedSections.insert(section)
     }
 
     func clearInspection() {
-        inspectionData = nil
+        inspectionData = ProcessInspectionData()
+        loadingSections.removeAll()
+        loadedSections.removeAll()
     }
 }

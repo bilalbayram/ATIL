@@ -14,6 +14,31 @@ final class RuleEngine {
         let actionTaken: String
     }
 
+    func categoryOverrides(for processes: [ATILProcess]) -> [ProcessIdentity: ProcessCategory] {
+        guard let rules = try? ruleRepo.enabledRules(), !rules.isEmpty else {
+            return [:]
+        }
+
+        let runningApps = runningAppSet()
+        var overrides: [ProcessIdentity: ProcessCategory] = [:]
+
+        for rule in rules where rule.action == .markRedundant || rule.action == .markSuspicious {
+            for process in processes {
+                guard shouldEvaluate(rule: rule, process: process, runningApps: runningApps) else {
+                    continue
+                }
+
+                let proposedCategory: ProcessCategory = rule.action == .markRedundant ? .redundant : .suspicious
+                let current = overrides[process.identity] ?? .healthy
+                if proposedCategory < current {
+                    overrides[process.identity] = proposedCategory
+                }
+            }
+        }
+
+        return overrides
+    }
+
     /// Evaluate all enabled rules against the process list.
     /// Returns results for actions that were taken.
     func evaluate(processes: [ATILProcess]) async -> [RuleResult] {
@@ -21,35 +46,16 @@ final class RuleEngine {
             return []
         }
 
-        // Build running app set for context checks
-        let runningApps = Set(
-            NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
-        )
+        let runningApps = runningAppSet()
 
         var results: [RuleResult] = []
 
-        for rule in rules {
+        for rule in rules where rule.action == .kill || rule.action == .suspend {
             guard let ruleId = rule.id else { continue }
 
             for process in processes {
-                // Safety gate check
-                if safetyGate.isProtected(process) || safetyGate.isIgnored(process) {
+                guard shouldEvaluate(rule: rule, process: process, runningApps: runningApps) else {
                     continue
-                }
-
-                // Match check
-                guard rule.matches(process) else { continue }
-
-                // Conditions check
-                guard rule.conditionsMet(for: process) else { continue }
-
-                // Context check (another app must/must not be running)
-                if let contextApp = rule.contextAppBundleId {
-                    let isRunning = runningApps.contains(contextApp)
-                    if let mustBeRunning = rule.contextAppMustBeRunning {
-                        if mustBeRunning && !isRunning { continue }
-                        if !mustBeRunning && isRunning { continue }
-                    }
                 }
 
                 // Cooldown check
@@ -76,8 +82,10 @@ final class RuleEngine {
                     actionTaken = "suspend"
 
                 case .markRedundant:
-                    // This is handled in classification, not as an action
-                    actionTaken = "markRedundant"
+                    continue
+
+                case .markSuspicious:
+                    continue
                 }
 
                 // Record event
@@ -99,7 +107,10 @@ final class RuleEngine {
         let matcherType: AutoRule.MatcherType
         let matcherValue: String
 
-        if let bundleId = process.bundleIdentifier {
+        if let launchdLabel = process.launchdJob?.label {
+            matcherType = .launchdLabel
+            matcherValue = launchdLabel
+        } else if let bundleId = process.bundleIdentifier {
             matcherType = .bundleId
             matcherValue = bundleId
         } else if let path = process.executablePath {
@@ -114,8 +125,11 @@ final class RuleEngine {
         if process.isOrphaned {
             conditions.append(RuleCondition(type: .isOrphaned, value: "true"))
         }
-        if !process.hasTTY {
-            conditions.append(RuleCondition(type: .noTTY, value: "true"))
+        if !process.hasOwningApp {
+            conditions.append(RuleCondition(type: .noOwningApp, value: "true"))
+        }
+        if !process.hasSockets {
+            conditions.append(RuleCondition(type: .noSockets, value: "true"))
         }
         // Default: idle > 5 minutes
         conditions.append(RuleCondition(type: .cpuIdleGreaterThan, value: "300"))
@@ -134,5 +148,33 @@ final class RuleEngine {
         )
         rule.conditions = conditions
         return rule
+    }
+
+    private func runningAppSet() -> Set<String> {
+        Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+    }
+
+    private func shouldEvaluate(
+        rule: AutoRule,
+        process: ATILProcess,
+        runningApps: Set<String>
+    ) -> Bool {
+        if safetyGate.isProtected(process) || safetyGate.isIgnored(process) {
+            return false
+        }
+
+        guard rule.matches(process), rule.conditionsMet(for: process) else {
+            return false
+        }
+
+        if let contextApp = rule.contextAppBundleId {
+            let isRunning = runningApps.contains(contextApp)
+            if let mustBeRunning = rule.contextAppMustBeRunning {
+                if mustBeRunning && !isRunning { return false }
+                if !mustBeRunning && isRunning { return false }
+            }
+        }
+
+        return true
     }
 }

@@ -29,7 +29,11 @@ struct ProcessListView: View {
                 return .handled
             }
             .onKeyPress(.space) {
-                viewModel.suspendAllSelected()
+                viewModel.toggleSuspendResumeForSelection()
+                return .handled
+            }
+            .onKeyPress(.return) {
+                viewModel.selectedProcessID = viewModel.selectedProcessIDs.count == 1 ? viewModel.selectedProcessIDs.first : nil
                 return .handled
             }
             .onKeyPress("i") {
@@ -38,6 +42,10 @@ struct ProcessListView: View {
             }
             .onKeyPress("r") {
                 viewModel.createRuleFromSelected()
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                viewModel.clearSelection()
                 return .handled
             }
             .onChange(of: vm.selectedProcessIDs) {

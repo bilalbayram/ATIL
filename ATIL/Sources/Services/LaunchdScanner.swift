@@ -4,6 +4,7 @@ import Foundation
 struct LaunchdJobInfo: Sendable {
     let label: String
     let plistPath: String
+    let domain: String
     let programPath: String?
     let programArguments: [String]?
     let keepAlive: Bool
@@ -76,10 +77,17 @@ struct LaunchdScanner: Sendable {
         }()
 
         let runAtLoad = plist["RunAtLoad"] as? Bool ?? false
+        let domain: String
+        if path.contains("/LaunchDaemons/") {
+            domain = "system"
+        } else {
+            domain = "gui/\(getuid())"
+        }
 
         return LaunchdJobInfo(
             label: label,
             plistPath: path,
+            domain: domain,
             programPath: program ?? programArguments?.first,
             programArguments: programArguments,
             keepAlive: keepAlive,
