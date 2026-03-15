@@ -263,6 +263,26 @@ final class ProcessListViewModel {
         selectedProcessID = selectedProcessIDs.count == 1 ? selectedProcessIDs.first : nil
     }
 
+    /// Resolves any group sentinel IDs in the selection to their child
+    /// process IDs so actions operate on real processes.
+    func resolveGroupSentinels() {
+        guard showGrouped else { return }
+        let allGroups = groupedProcesses.values.flatMap { $0 }
+        var resolved = selectedProcessIDs
+        var changed = false
+        for group in allGroups where group.isGrouped {
+            let sentinel = group.groupIdentity
+            if resolved.contains(sentinel) {
+                resolved.remove(sentinel)
+                resolved.formUnion(group.processes.map(\.identity))
+                changed = true
+            }
+        }
+        if changed {
+            selectedProcessIDs = resolved
+        }
+    }
+
     func selectAllVisible() {
         selectedProcessIDs = Set(visibleProcesses.map(\.identity))
         selectedProcessID = selectedProcessIDs.count == 1 ? selectedProcessIDs.first : nil

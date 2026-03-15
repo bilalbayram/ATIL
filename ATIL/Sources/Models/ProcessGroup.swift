@@ -26,6 +26,14 @@ struct ProcessGroup: Identifiable, Sendable {
         processes.count > 1
     }
 
+    /// Synthetic identity used as a List tag so group headers get native
+    /// selection highlighting.  Uses pid -1 and a stable hash-derived date
+    /// to avoid colliding with real process identities.
+    var groupIdentity: ProcessIdentity {
+        let hash = abs(id.hashValue)
+        return ProcessIdentity(pid: -1, startTime: Date(timeIntervalSince1970: TimeInterval(hash)))
+    }
+
     /// Build groups from a flat process list.
     static func group(_ processes: [ATILProcess]) -> [ProcessGroup] {
         var groups: [String: [ATILProcess]] = [:]

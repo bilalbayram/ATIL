@@ -49,6 +49,8 @@ struct ProcessListView: View {
                 return .handled
             }
             .onChange(of: vm.selectedProcessIDs) {
+                // Expand group sentinel tags to their child process IDs
+                vm.resolveGroupSentinels()
                 // Sync single selection for inspect panel
                 vm.selectedProcessID = vm.selectedProcessIDs.count == 1 ? vm.selectedProcessIDs.first : nil
             }

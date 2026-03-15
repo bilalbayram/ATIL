@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Group header row — selectable (selects all children), with a trailing
-/// expand/collapse button.  Layout matches ProcessRowView columns so
-/// grouped and ungrouped rows are aligned.
+/// Group header row — tagged with a synthetic identity so it gets native
+/// List selection highlighting identical to process rows.
 struct ProcessGroupHeaderView: View {
     let group: ProcessGroup
     @Environment(ProcessListViewModel.self) private var viewModel
@@ -11,28 +10,15 @@ struct ProcessGroupHeaderView: View {
         viewModel.expandedGroupIDs.contains(group.id)
     }
 
-    private var isSelected: Bool {
-        let childIDs = Set(group.processes.map(\.identity))
-        return !childIDs.isEmpty && childIDs.isSubset(of: viewModel.selectedProcessIDs)
-    }
-
     var body: some View {
         HStack(spacing: 10) {
-            // Icon — same position as ProcessRowView icon
-            if let icon = group.appIcon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-            } else {
-                Image(systemName: "gearshape.2.fill")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(.secondary)
-            }
+            // Group indicator SF Symbol
+            Image(systemName: "square.stack.3d.up.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
 
-            // Name + count — same position as ProcessRowView name
+            // Name + count
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.displayName)
                     .font(.system(.body, weight: .medium))
@@ -45,13 +31,13 @@ struct ProcessGroupHeaderView: View {
 
             Spacer()
 
-            // Memory — same position as ProcessRowView memory column
+            // Memory — same column as ProcessRowView
             Text(formatBytes(group.totalMemory))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 60, alignment: .trailing)
 
-            // Expand/collapse button in place of PID column
+            // Expand/collapse button in PID column position
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     if isExpanded {
@@ -70,14 +56,6 @@ struct ProcessGroupHeaderView: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
-        .padding(.horizontal, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            viewModel.selectGroup(group)
-        }
+        .tag(group.groupIdentity)
     }
 }
