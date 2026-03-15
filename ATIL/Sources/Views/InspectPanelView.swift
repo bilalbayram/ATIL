@@ -279,6 +279,14 @@ private struct NetworkSectionContent: View {
     let data: ProcessInspectionData
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            networkContent
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var networkContent: some View {
         if let listeningPorts = data.listeningPorts, !listeningPorts.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Listening Ports")
