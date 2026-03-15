@@ -11,6 +11,11 @@ struct ProcessGroupHeaderView: View {
         viewModel.expandedGroupIDs.contains(group.id)
     }
 
+    private var isSelected: Bool {
+        let childIDs = Set(group.processes.map(\.identity))
+        return !childIDs.isEmpty && childIDs.isSubset(of: viewModel.selectedProcessIDs)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             // Icon — same position as ProcessRowView icon
@@ -65,9 +70,13 @@ struct ProcessGroupHeaderView: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        )
         .contentShape(Rectangle())
         .onTapGesture {
-            // Select all child processes in this group
             viewModel.selectGroup(group)
         }
     }
