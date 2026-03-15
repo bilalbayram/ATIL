@@ -45,6 +45,7 @@ struct CategorySectionView: View {
                             ForEach(group.processes) { process in
                                 ProcessRowView(process: process)
                                     .tag(process.identity)
+                                    .padding(.leading, 26)
                             }
                         }
                     } else if let process = group.processes.first {
