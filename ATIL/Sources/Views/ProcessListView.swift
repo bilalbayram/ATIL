@@ -62,6 +62,6 @@ struct ProcessListView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.hasMultipleSelection)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.hasMultipleSelection)
     }
 }

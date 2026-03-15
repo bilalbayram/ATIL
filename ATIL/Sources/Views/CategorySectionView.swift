@@ -80,6 +80,7 @@ struct CategorySectionView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .accessibilityLabel("\(category.displayName), \(processes.count) processes, \(formatBytes(aggregateMemory))")
         }
     }
 

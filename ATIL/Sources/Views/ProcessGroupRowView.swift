@@ -39,7 +39,7 @@ struct ProcessGroupHeaderView: View {
 
             // Expand/collapse button in PID column position
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                     if isExpanded {
                         viewModel.expandedGroupIDs.remove(group.id)
                     } else {
@@ -57,5 +57,47 @@ struct ProcessGroupHeaderView: View {
         }
         .padding(.vertical, 2)
         .tag(group.groupIdentity)
+        .contextMenu {
+            Button {
+                Task { await viewModel.killAllInGroup(group) }
+            } label: {
+                Label("Kill All in Group", systemImage: "xmark.circle")
+            }
+
+            Button {
+                viewModel.suspendAllInGroup(group)
+            } label: {
+                Label("Suspend All in Group", systemImage: "pause.circle")
+            }
+
+            Button {
+                viewModel.ignoreAllInGroup(group)
+            } label: {
+                Label("Ignore All in Group", systemImage: "eye.slash")
+            }
+
+            Divider()
+
+            Button {
+                viewModel.selectGroup(group)
+            } label: {
+                Label("Select All in Group", systemImage: "checkmark.circle")
+            }
+
+            Button {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    if isExpanded {
+                        viewModel.expandedGroupIDs.remove(group.id)
+                    } else {
+                        viewModel.expandedGroupIDs.insert(group.id)
+                    }
+                }
+            } label: {
+                Label(isExpanded ? "Collapse" : "Expand", systemImage: isExpanded ? "chevron.up" : "chevron.down")
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.displayName), \(group.processCount) processes")
+        .accessibilityHint(isExpanded ? "Double-click to collapse" : "Double-click to expand")
     }
 }

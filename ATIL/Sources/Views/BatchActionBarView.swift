@@ -20,6 +20,7 @@ struct BatchActionBarView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
+            .accessibilityHint("Terminates all selected processes")
 
             Button {
                 viewModel.suspendAllSelected()
@@ -47,6 +48,8 @@ struct BatchActionBarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Batch actions for \(selectedCount) selected processes")
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .shadow(radius: 4)
         .padding(.horizontal, 16)

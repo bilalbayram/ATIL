@@ -330,6 +330,86 @@ final class ProcessListViewModel {
         Task { await monitor.scan() }
     }
 
+    // MARK: - Process-Specific Actions
+
+    func killProcess(_ process: ATILProcess) async {
+        guard !safetyGate.isProtected(process) else {
+            lastError = "Cannot kill protected process: \(process.name)"
+            return
+        }
+        if let job = process.launchdJob, job.willRespawn {
+            launchdConfirmProcess = process
+            showingLaunchdConfirmation = true
+            return
+        }
+        await performKill(process: process)
+    }
+
+    func suspendProcess(_ process: ATILProcess) {
+        guard !safetyGate.isProtected(process) else {
+            lastError = "Cannot suspend protected process: \(process.name)"
+            return
+        }
+        do {
+            try actionService.suspend(process: process)
+            Task { await monitor.scan() }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func resumeProcess(_ process: ATILProcess) {
+        if actionService.resume(pid: process.pid) {
+            Task { await monitor.scan() }
+        } else {
+            lastError = "Failed to resume process"
+        }
+    }
+
+    func ignoreProcess(_ process: ATILProcess) {
+        safetyGate.ignore(process)
+        Task { await monitor.scan() }
+    }
+
+    func createRuleFrom(_ process: ATILProcess) {
+        ruleBuilderRule = monitor.ruleEngine.createRuleFromProcess(process, action: .kill)
+        showingRuleBuilder = true
+    }
+
+    func inspectProcess(_ process: ATILProcess) {
+        selectedProcessIDs = [process.identity]
+        selectedProcessID = process.identity
+    }
+
+    // MARK: - Group Actions
+
+    func killAllInGroup(_ group: ProcessGroup) async {
+        for process in group.processes {
+            guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
+            if let freed = try? await actionService.kill(process: process) {
+                sessionKillCount += 1
+                sessionMemoryFreed += freed
+            }
+        }
+        loadLifetimeStats()
+        await monitor.scan()
+    }
+
+    func suspendAllInGroup(_ group: ProcessGroup) {
+        for process in group.processes {
+            guard !safetyGate.isProtected(process), process.isUserOwned else { continue }
+            try? actionService.suspend(process: process)
+        }
+        Task { await monitor.scan() }
+    }
+
+    func ignoreAllInGroup(_ group: ProcessGroup) {
+        for process in group.processes {
+            safetyGate.ignore(process)
+        }
+        Task { await monitor.scan() }
+    }
+
     func startMonitoring() {
         monitor.startPolling(interval: TimeInterval(pollingIntervalSeconds))
         Task { await monitor.scan() }

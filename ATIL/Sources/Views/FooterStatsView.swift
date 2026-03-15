@@ -40,5 +40,7 @@ struct FooterStatsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
     }
 }

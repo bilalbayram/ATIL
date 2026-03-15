@@ -28,6 +28,7 @@ struct MainWindowView: View {
             }
         }
         .navigationTitle("ATIL")
+        .focusedSceneValue(\.viewModel, viewModel)
         .task {
             viewModel.startMonitoring()
         }
@@ -35,7 +36,7 @@ struct MainWindowView: View {
             viewModel.stopMonitoring()
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .automatic) {
                 Button {
                     viewModel.requestSearchFocus()
                 } label: {
@@ -44,20 +45,14 @@ struct MainWindowView: View {
                 .keyboardShortcut("f", modifiers: .command)
                 .help("Focus search")
 
-                Button {
-                    viewModel.selectAllVisible()
-                } label: {
-                    Label("Select Visible", systemImage: "checklist")
-                }
-                .keyboardShortcut("a", modifiers: .command)
-                .help("Select all visible process rows")
-
                 Toggle(isOn: $vm.showGrouped) {
                     Label("Group by App", systemImage: "rectangle.3.group")
                 }
                 .toggleStyle(.button)
                 .help("Group processes by application bundle")
+            }
 
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showingHistory.toggle()
                 } label: {
@@ -77,7 +72,7 @@ struct MainWindowView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .keyboardShortcut("r", modifiers: .command)
+                .help("Refresh process list")
                 .disabled(viewModel.monitor.isScanning)
             }
         }

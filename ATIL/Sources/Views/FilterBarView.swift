@@ -14,6 +14,7 @@ struct FilterBarView: View {
             TextField("Search processes...", text: $vm.searchText)
                 .textFieldStyle(.plain)
                 .focused($isSearchFocused)
+                .accessibilityLabel("Search processes")
 
             if !viewModel.searchText.isEmpty {
                 Button {
@@ -23,6 +24,7 @@ struct FilterBarView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(8)

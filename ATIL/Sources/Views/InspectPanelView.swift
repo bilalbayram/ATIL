@@ -235,28 +235,30 @@ private struct LazyInspectionSection<Content: View>: View {
     let inspector: ProcessInspectorViewModel
     let onLoad: () -> Void
     @ViewBuilder let content: () -> Content
+    @State private var isExpanded = false
 
     var body: some View {
         Divider()
-        HStack {
-            SectionHeader(title)
-            Spacer()
-            if inspector.isLoading(section) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            if inspector.hasLoaded(section) {
+                content()
+            } else {
                 ProgressView()
-                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
             }
-            if !inspector.hasLoaded(section) {
-                Button("Load", action: onLoad)
-                    .buttonStyle(.bordered)
+        } label: {
+            SectionHeader(title)
+        }
+        .onChange(of: isExpanded) {
+            if isExpanded && !inspector.hasLoaded(section) && !inspector.isLoading(section) {
+                onLoad()
             }
         }
-
-        if inspector.hasLoaded(section) {
-            content()
-        } else {
-            Text("Loaded on demand.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        .onChange(of: inspector.loadedSections) {
+            if isExpanded && !inspector.hasLoaded(section) && !inspector.isLoading(section) {
+                onLoad()
+            }
         }
     }
 }
@@ -379,6 +381,7 @@ private struct InfoRow: View {
             Text(value)
                 .font(.body.monospaced())
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -390,9 +393,10 @@ private struct CategoryBadge: View {
             .font(.caption.bold())
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .foregroundStyle(.white)
-            .background(color)
+            .foregroundStyle(color)
+            .background(color.opacity(0.15))
             .clipShape(Capsule())
+            .accessibilityLabel(category.displayName)
     }
 
     private var color: Color {
@@ -426,6 +430,7 @@ private struct ProcessActionButtons: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
+                .accessibilityHint("Terminates this process")
 
                 Button {
                     viewModel.suspendSelected()
