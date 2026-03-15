@@ -76,7 +76,7 @@ enum ClassificationReason: String, Sendable, CaseIterable {
         switch self {
         case .orphanedNoParent, .longIdle, .noListeningSockets, .noTTY,
              .highMemoryLowActivity, .blocklistMatch, .unknownBinary,
-             .noOwningApp, .userRuleMarkedRedundant:
+             .userRuleMarkedRedundant:
             true
         default:
             false
@@ -112,6 +112,8 @@ struct ATILProcess: Identifiable, Sendable {
     let hasOwningApp: Bool
     let bundleIdentifier: String?
     let bundlePath: String?
+    let owningAppBundleIdentifier: String?
+    let owningAppBundlePath: String?
 
     var category: ProcessCategory
     var classificationReasons: Set<ClassificationReason>
@@ -130,5 +132,21 @@ struct ATILProcess: Identifiable, Sendable {
 
     var isUserOwned: Bool {
         uid == getuid()
+    }
+
+    var shouldDisplayOrphanBadge: Bool {
+        classificationReasons.contains(.orphanedNoParent)
+    }
+
+    var groupingIdentifier: String? {
+        owningAppBundleIdentifier
+            ?? bundleIdentifier
+            ?? owningAppBundlePath
+            ?? bundlePath
+            ?? executablePath
+    }
+
+    var groupingBundlePath: String? {
+        owningAppBundlePath ?? bundlePath
     }
 }

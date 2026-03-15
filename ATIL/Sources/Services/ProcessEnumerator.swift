@@ -68,15 +68,12 @@ struct ProcessEnumerator: Sendable {
 
     // MARK: - Bundle Resolution
 
-    func findBundle(forPath path: String) -> Bundle? {
-        var url = URL(fileURLWithPath: path)
-        while url.path != "/" {
-            if url.pathExtension == "app" {
-                return Bundle(url: url)
-            }
-            url = url.deletingLastPathComponent()
-        }
-        return nil
+    func nearestBundlePath(forExecutablePath path: String) -> String? {
+        ProcessHeuristics.nearestBundlePath(forExecutablePath: path)
+    }
+
+    func owningAppBundlePath(forExecutablePath path: String) -> String? {
+        ProcessHeuristics.owningAppBundlePath(forExecutablePath: path)
     }
 
     // MARK: - Build Process
@@ -161,23 +158,43 @@ struct ProcessEnumerator: Sendable {
         let threadCount = taskInfo.map { Int32($0.pti_threadnum) } ?? 0
         let niceValue = Int32(bsdInfo.pbi_nice)
 
-        let isOrphaned = ppid == 1 && pid != 1
         let parentAlive = context.alivePIDs.contains(ppid)
 
         // Bundle resolution
         let runningApp = appMap[pid]
-        let resolvedBundle = path.flatMap { findBundle(forPath: $0) }
+        let concreteBundlePath = path.flatMap(nearestBundlePath(forExecutablePath:))
+        let concreteBundle = concreteBundlePath.flatMap(Bundle.init(path:))
+        let owningAppPath = runningApp?.bundleURL?.path
+            ?? path.flatMap(owningAppBundlePath(forExecutablePath:))
+        let owningAppBundle = owningAppPath.flatMap(Bundle.init(path:))
         let bundleIdentifier = runningApp?.bundleIdentifier
-            ?? resolvedBundle?.bundleIdentifier
+            ?? concreteBundle?.bundleIdentifier
         let bundlePath = runningApp?.bundleURL?.path
-            ?? resolvedBundle?.bundlePath
-        let hasOwningApp = runningApp != nil
-            || bundlePath.map { runningAppBundlePaths.contains($0) } ?? false
+            ?? concreteBundlePath
+        let owningAppBundleIdentifier = runningApp?.bundleIdentifier
+            ?? owningAppBundle?.bundleIdentifier
+        let hasOwningApp = owningAppPath.map { runningAppBundlePaths.contains($0) } ?? false
+
+        let launchdJob = path.flatMap { context.launchdMap[$0] }
+        let isOrphaned = ProcessHeuristics.isLikelyOrphaned(
+            ppid: ppid,
+            launchdJob: launchdJob,
+            owningAppBundlePath: owningAppPath,
+            owningAppBundleIdentifier: owningAppBundleIdentifier,
+            bundlePath: bundlePath,
+            bundleIdentifier: bundleIdentifier,
+            executablePath: path
+        )
 
         // App icon
         let appIcon: NSImage? = {
             if let icon = runningApp?.icon { return icon }
-            if let p = path { return NSWorkspace.shared.icon(forFile: p) }
+            if let owningAppPath {
+                return NSWorkspace.shared.icon(forFile: owningAppPath)
+            }
+            if let p = path {
+                return NSWorkspace.shared.icon(forFile: p)
+            }
             return nil
         }()
 
@@ -197,9 +214,6 @@ struct ProcessEnumerator: Sendable {
             if cpuChanged { return nil }
             return context.previousIdleTimes[identity] ?? context.now
         }()
-
-        // Launchd association
-        let launchdJob = path.flatMap { context.launchdMap[$0] }
 
         return ATILProcess(
             identity: identity,
@@ -225,6 +239,8 @@ struct ProcessEnumerator: Sendable {
             hasOwningApp: hasOwningApp,
             bundleIdentifier: bundleIdentifier,
             bundlePath: bundlePath,
+            owningAppBundleIdentifier: owningAppBundleIdentifier,
+            owningAppBundlePath: owningAppPath,
             category: .healthy, // placeholder, classifier sets this
             classificationReasons: [],
             lastSeen: context.now,

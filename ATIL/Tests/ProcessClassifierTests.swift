@@ -13,11 +13,17 @@ struct ProcessClassifierTests {
         isOrphaned: Bool = false,
         parentAlive: Bool = true,
         hasTTY: Bool = false,
+        hasSockets: Bool = false,
+        hasOwningApp: Bool? = nil,
         residentMemory: UInt64 = 1_000_000,
         cpuTimeUser: TimeInterval = 0,
         idleSince: Date? = nil,
         bundleIdentifier: String? = nil,
-        executablePath: String? = "/usr/local/bin/test"
+        bundlePath: String? = nil,
+        owningAppBundleIdentifier: String? = nil,
+        owningAppBundlePath: String? = nil,
+        executablePath: String? = "/usr/local/bin/test",
+        launchdJob: LaunchdJobInfo? = nil
     ) -> ATILProcess {
         ATILProcess(
             identity: ProcessIdentity(pid: pid, startTime: Date()),
@@ -39,36 +45,88 @@ struct ProcessClassifierTests {
             isOrphaned: isOrphaned,
             parentAlive: parentAlive,
             hasTTY: hasTTY,
-            hasSockets: false,
-            hasOwningApp: bundleIdentifier != nil,
+            hasSockets: hasSockets,
+            hasOwningApp: hasOwningApp ?? (owningAppBundleIdentifier != nil),
             bundleIdentifier: bundleIdentifier,
-            bundlePath: nil,
+            bundlePath: bundlePath,
+            owningAppBundleIdentifier: owningAppBundleIdentifier,
+            owningAppBundlePath: owningAppBundlePath,
             category: .healthy,
             classificationReasons: [],
             lastSeen: Date(),
             idleSince: idleSince,
-            launchdJob: nil,
+            launchdJob: launchdJob,
             appIcon: nil
         )
     }
 
-    @Test @MainActor func orphanedAloneIsNotRedundant() {
-        // Per spec: "Orphaned is a signal, not a verdict" — never mark redundant on orphan alone
-        // Process has a bundle ID and a known system path, so only orphan signal fires
-        let p = makeProcess(
-            ppid: 1,
-            isOrphaned: true,
-            parentAlive: false,
-            hasTTY: true,
-            bundleIdentifier: "com.example.helper",
-            executablePath: "/System/Library/Frameworks/helper"
+    private func makeLaunchdJob(label: String = "dev.tuist.agent") -> LaunchdJobInfo {
+        LaunchdJobInfo(
+            label: label,
+            plistPath: "/Library/LaunchDaemons/\(label).plist",
+            domain: "system",
+            programPath: "/usr/local/bin/\(label)",
+            programArguments: nil,
+            keepAlive: true,
+            runAtLoad: true
         )
-        let result = classifier.classify(p, safetyGate: SafetyGate.shared)
-        #expect(result.category != .redundant, "Orphaned alone should not be redundant")
     }
 
-    @Test @MainActor func multipleRedundantSignalsMarkRedundant() {
-        // 3+ signals: orphaned + long idle + no TTY + unknown binary
+    @Test @MainActor func ppidOneAppOwnedProcessIsHealthyAndNotOrphaned() {
+        let p = makeProcess(
+            name: "Mail Spotlight Extension",
+            ppid: 1,
+            isOrphaned: false,
+            parentAlive: false,
+            hasTTY: false,
+            hasOwningApp: true,
+            bundleIdentifier: "com.apple.mail.SpotlightIndexExtension",
+            bundlePath: "/System/Applications/Mail.app/Contents/PlugIns/com.apple.mail.SpotlightIndexExtension.appex",
+            owningAppBundleIdentifier: "com.apple.mail",
+            owningAppBundlePath: "/System/Applications/Mail.app",
+            executablePath: "/System/Applications/Mail.app/Contents/PlugIns/com.apple.mail.SpotlightIndexExtension.appex/Contents/MacOS/com.apple.mail.SpotlightIndexExtension"
+        )
+        let result = classifier.classify(p, safetyGate: SafetyGate.shared)
+        #expect(result.category == .healthy)
+        #expect(!result.classificationReasons.contains(.orphanedNoParent))
+    }
+
+    @Test @MainActor func launchdManagedAgentIsHealthyByDefault() {
+        let p = makeProcess(
+            name: "Little Snitch Agent",
+            ppid: 1,
+            isOrphaned: false,
+            parentAlive: false,
+            hasTTY: false,
+            bundleIdentifier: "at.obdev.littlesnitch.agent",
+            bundlePath: "/Applications/Little Snitch.app/Contents/Components/Little Snitch Agent.app",
+            executablePath: "/Applications/Little Snitch.app/Contents/Components/Little Snitch Agent.app/Contents/MacOS/Little Snitch Agent",
+            launchdJob: makeLaunchdJob(label: "at.obdev.littlesnitch.agent")
+        )
+        let result = classifier.classify(p, safetyGate: SafetyGate.shared)
+        #expect(result.category == .healthy)
+        #expect(result.classificationReasons.contains(.launchdManaged))
+        #expect(!result.classificationReasons.contains(.orphanedNoParent))
+    }
+
+    @Test @MainActor func nestedHelperAppIsHealthyWhenOwningAppIsRunning() {
+        let p = makeProcess(
+            name: "Codex Helper",
+            ppid: 21091,
+            hasTTY: false,
+            hasOwningApp: true,
+            bundleIdentifier: "com.openai.codex.helper",
+            bundlePath: "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app",
+            owningAppBundleIdentifier: "com.openai.codex",
+            owningAppBundlePath: "/Applications/Codex.app",
+            executablePath: "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app/Contents/MacOS/Codex Helper"
+        )
+        let result = classifier.classify(p, safetyGate: SafetyGate.shared)
+        #expect(result.category == .healthy)
+        #expect(result.classificationReasons.contains(.activeApp))
+    }
+
+    @Test @MainActor func unknownIdleUnmanagedBinaryBecomesRedundant() {
         let p = makeProcess(
             ppid: 1,
             isOrphaned: true,
@@ -79,7 +137,7 @@ struct ProcessClassifierTests {
             executablePath: "/opt/custom/bin/something"
         )
         let result = classifier.classify(p, safetyGate: SafetyGate.shared)
-        #expect(result.category == .redundant, "3+ redundant signals should classify as redundant")
+        #expect(result.category == .redundant)
     }
 
     @Test @MainActor func healthyAppProcess() {
@@ -88,10 +146,13 @@ struct ProcessClassifierTests {
             cpuTimeUser: 5.0,
             idleSince: nil,
             bundleIdentifier: "com.apple.Safari",
+            bundlePath: "/Applications/Safari.app",
+            owningAppBundleIdentifier: "com.apple.Safari",
+            owningAppBundlePath: "/Applications/Safari.app",
             executablePath: "/Applications/Safari.app/Contents/MacOS/Safari"
         )
         let result = classifier.classify(p, safetyGate: SafetyGate.shared)
-        #expect(result.category == .healthy, "Active app with bundle ID should be healthy")
+        #expect(result.category == .healthy)
     }
 
     @Test @MainActor func protectedProcessIsAlwaysHealthy() {
@@ -113,6 +174,18 @@ struct ProcessClassifierTests {
             executablePath: "/opt/custom/bin/mystery"
         )
         let result = classifier.classify(p, safetyGate: SafetyGate.shared)
-        #expect(result.category == .suspicious, "Unknown binary should be suspicious")
+        #expect(result.category == .suspicious)
+        #expect(result.classificationReasons.contains(.unknownBinary))
+    }
+
+    @Test @MainActor func highMemoryBelowIdleThresholdDoesNotTriggerHighMemoryLowActivity() {
+        let p = makeProcess(
+            residentMemory: 250 * 1_048_576,
+            idleSince: Date().addingTimeInterval(-120),
+            bundleIdentifier: nil,
+            executablePath: "/opt/custom/bin/mystery"
+        )
+        let result = classifier.classify(p, safetyGate: SafetyGate.shared)
+        #expect(!result.classificationReasons.contains(.highMemoryLowActivity))
     }
 }

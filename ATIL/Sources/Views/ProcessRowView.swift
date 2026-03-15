@@ -31,7 +31,7 @@ struct ProcessRowView: View {
                 if process.classificationReasons.contains(.protectedProcess) {
                     StatusBadgeView(text: "protected", icon: "lock.fill", color: .blue)
                 }
-                if process.isOrphaned {
+                if process.shouldDisplayOrphanBadge {
                     StatusBadgeView(text: "orphaned", color: .orange)
                 }
                 if let idle = process.idleSince {

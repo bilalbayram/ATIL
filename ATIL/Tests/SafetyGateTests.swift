@@ -36,6 +36,8 @@ struct SafetyGateTests {
             hasOwningApp: bundleIdentifier != nil,
             bundleIdentifier: bundleIdentifier,
             bundlePath: nil,
+            owningAppBundleIdentifier: nil,
+            owningAppBundlePath: nil,
             category: .healthy,
             classificationReasons: [],
             lastSeen: Date(),

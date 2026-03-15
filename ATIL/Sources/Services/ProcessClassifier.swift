@@ -4,13 +4,6 @@ struct ProcessClassifier: Sendable {
     private static let idleThreshold: TimeInterval = 5 * 60 // 5 minutes
     private static let highMemoryThreshold: UInt64 = 100 * 1_048_576 // 100 MB
 
-    private static let knownSystemPaths: Set<String> = [
-        "/usr/sbin/",
-        "/usr/libexec/",
-        "/System/Library/",
-        "/sbin/",
-    ]
-
     @MainActor
     func classify(
         _ process: ATILProcess,
@@ -43,33 +36,45 @@ struct ProcessClassifier: Sendable {
         }
 
         // Layer 2: Gather signals
-        // Orphaned check: ppid == 1 and not a launchd-managed daemon
-        if p.isOrphaned && !p.parentAlive {
+        let isKnownSystemPath = ProcessHeuristics.isKnownSystemPath(p.executablePath)
+        let hasConcreteBundle = p.bundleIdentifier != nil || p.bundlePath != nil
+        let hasOwningAppBundle = p.owningAppBundleIdentifier != nil || p.owningAppBundlePath != nil
+        let isUnmanagedBinary = !hasConcreteBundle
+            && !hasOwningAppBundle
+            && p.launchdJob == nil
+            && !isKnownSystemPath
+
+        // Orphaned check: prefiltered to unmanaged, unowned processes.
+        if p.isOrphaned {
             reasons.insert(.orphanedNoParent)
         }
 
         // Long idle: no CPU activity for > 5 minutes
-        if let idleSince = p.idleSince {
-            let idleDuration = p.lastSeen.timeIntervalSince(idleSince)
-            if idleDuration > Self.idleThreshold {
-                reasons.insert(.longIdle)
-            }
+        let idleDuration: TimeInterval? = {
+            guard let idleSince = p.idleSince else { return nil }
+            return p.lastSeen.timeIntervalSince(idleSince)
+        }()
+
+        if let idleDuration, idleDuration > Self.idleThreshold {
+            reasons.insert(.longIdle)
         }
 
         // No TTY
-        if !p.hasTTY && !p.hasOwningApp {
+        if !p.hasTTY && isUnmanagedBinary {
             reasons.insert(.noTTY)
         }
 
         // No sockets
-        if !p.hasSockets && !p.hasOwningApp {
+        if !p.hasSockets && isUnmanagedBinary {
             reasons.insert(.noListeningSockets)
-        } else {
+        } else if p.hasSockets {
             reasons.insert(.hasListeningSockets)
         }
 
         // High memory + idle
-        if p.residentMemory > Self.highMemoryThreshold && p.idleSince != nil {
+        if p.residentMemory > Self.highMemoryThreshold,
+           let idleDuration,
+           idleDuration > Self.idleThreshold {
             reasons.insert(.highMemoryLowActivity)
         }
 
@@ -78,12 +83,8 @@ struct ProcessClassifier: Sendable {
             reasons.insert(.blocklistMatch)
         }
 
-        // Unknown binary: no bundle ID and not in known system paths
-        let isKnownSystemPath = p.executablePath.map { path in
-            Self.knownSystemPaths.contains { path.hasPrefix($0) }
-        } ?? false
-
-        if p.bundleIdentifier == nil && !isKnownSystemPath {
+        // Unknown binary: unmanaged and outside system locations
+        if isUnmanagedBinary {
             reasons.insert(.unknownBinary)
         }
 
@@ -116,22 +117,30 @@ struct ProcessClassifier: Sendable {
             return p
         }
 
-        // Layer 3: Classify based on signal count
-        let redundantSignals = reasons.filter(\.isRedundantSignal)
-        let redundantCount = redundantSignals.count
-        let strongSignals: Set<ClassificationReason> = [
+        // Layer 3: Classify based on weighted signals
+        let strongSignalKinds: Set<ClassificationReason> = [
             .orphanedNoParent,
+            .blocklistMatch,
+            .unknownBinary,
+        ]
+        let weakSignalKinds: Set<ClassificationReason> = [
             .longIdle,
             .highMemoryLowActivity,
-            .userRuleMarkedRedundant,
+            .noTTY,
+            .noListeningSockets,
         ]
-        let hasStrongSignal = !reasons.intersection(strongSignals).isEmpty
+        let strongSignals = reasons.intersection(strongSignalKinds)
+        let weakSignals = reasons.intersection(weakSignalKinds)
+        let negativeSignalCount = strongSignals.count + weakSignals.count
+        let isStale = reasons.contains(.longIdle) || reasons.contains(.highMemoryLowActivity)
 
-        if reasons.contains(.launchdManaged) {
-            p.category = .suspicious
-        } else if hasStrongSignal && redundantCount >= 3 {
+        if !strongSignals.isEmpty && isStale {
             p.category = .redundant
-        } else if redundantCount >= 1 {
+        } else if isUnmanagedBinary && negativeSignalCount >= 3 {
+            p.category = .redundant
+        } else if !strongSignals.isEmpty {
+            p.category = .suspicious
+        } else if isUnmanagedBinary && weakSignals.count >= 2 {
             p.category = .suspicious
         } else {
             p.category = .healthy

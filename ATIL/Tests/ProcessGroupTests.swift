@@ -6,7 +6,12 @@ import Testing
 struct ProcessGroupTests {
     private func makeProcess(
         pid: pid_t,
-        path: String
+        path: String,
+        bundleIdentifier: String? = nil,
+        bundlePath: String? = nil,
+        owningAppBundleIdentifier: String? = nil,
+        owningAppBundlePath: String? = nil,
+        classificationReasons: Set<ClassificationReason> = [.unknownBinary]
     ) -> ATILProcess {
         ATILProcess(
             identity: ProcessIdentity(pid: pid, startTime: Date()),
@@ -29,11 +34,13 @@ struct ProcessGroupTests {
             parentAlive: true,
             hasTTY: false,
             hasSockets: false,
-            hasOwningApp: false,
-            bundleIdentifier: nil,
-            bundlePath: nil,
+            hasOwningApp: owningAppBundleIdentifier != nil,
+            bundleIdentifier: bundleIdentifier,
+            bundlePath: bundlePath,
+            owningAppBundleIdentifier: owningAppBundleIdentifier,
+            owningAppBundlePath: owningAppBundlePath,
             category: .suspicious,
-            classificationReasons: [.unknownBinary],
+            classificationReasons: classificationReasons,
             lastSeen: Date(),
             idleSince: nil,
             launchdJob: nil,
@@ -52,5 +59,52 @@ struct ProcessGroupTests {
             "/opt/project-a/bin/python3",
             "/opt/project-b/bin/python3",
         ])
+    }
+
+    @Test func helpersGroupUnderOwningApp() {
+        let groups = ProcessGroup.group([
+            makeProcess(
+                pid: 200,
+                path: "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app/Contents/MacOS/Codex Helper",
+                bundleIdentifier: "com.openai.codex.helper",
+                bundlePath: "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app",
+                owningAppBundleIdentifier: "com.openai.codex",
+                owningAppBundlePath: "/Applications/Codex.app",
+                classificationReasons: []
+            ),
+            makeProcess(
+                pid: 201,
+                path: "/Applications/Codex.app/Contents/Frameworks/Codex Helper (Renderer).app/Contents/MacOS/Codex Helper (Renderer)",
+                bundleIdentifier: "com.openai.codex.helper.renderer",
+                bundlePath: "/Applications/Codex.app/Contents/Frameworks/Codex Helper (Renderer).app",
+                owningAppBundleIdentifier: "com.openai.codex",
+                owningAppBundlePath: "/Applications/Codex.app",
+                classificationReasons: []
+            ),
+        ])
+
+        #expect(groups.count == 1)
+        #expect(groups.first?.id == "com.openai.codex")
+        #expect(groups.first?.processCount == 2)
+    }
+
+    @Test func orphanBadgeTracksClassificationReason() {
+        let orphaned = makeProcess(
+            pid: 300,
+            path: "/opt/custom/bin/orphan",
+            classificationReasons: [.orphanedNoParent]
+        )
+        let appOwned = makeProcess(
+            pid: 301,
+            path: "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app/Contents/MacOS/Codex Helper",
+            bundleIdentifier: "com.openai.codex.helper",
+            bundlePath: "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app",
+            owningAppBundleIdentifier: "com.openai.codex",
+            owningAppBundlePath: "/Applications/Codex.app",
+            classificationReasons: []
+        )
+
+        #expect(orphaned.shouldDisplayOrphanBadge)
+        #expect(!appOwned.shouldDisplayOrphanBadge)
     }
 }

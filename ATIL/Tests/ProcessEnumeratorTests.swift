@@ -50,4 +50,75 @@ struct ProcessEnumeratorTests {
         #expect(process != nil, "Should be able to build a process for our own PID")
         #expect(process?.pid == selfPID)
     }
+
+    @Test func helperBundleResolutionUsesNearestBundleAndOwningApp() {
+        let helperPath = "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app/Contents/MacOS/Codex Helper"
+
+        #expect(
+            enumerator.nearestBundlePath(forExecutablePath: helperPath)
+                == "/Applications/Codex.app/Contents/Frameworks/Codex Helper.app"
+        )
+        #expect(
+            enumerator.owningAppBundlePath(forExecutablePath: helperPath)
+                == "/Applications/Codex.app"
+        )
+    }
+
+    @Test func appexAndXPCResolveToOwningApp() {
+        let appexPath = "/System/Applications/Mail.app/Contents/PlugIns/com.apple.mail.SpotlightIndexExtension.appex/Contents/MacOS/com.apple.mail.SpotlightIndexExtension"
+        let xpcPath = "/Applications/Xcode.app/Contents/SharedFrameworks/SourceKit.framework/Versions/A/XPCServices/com.apple.dt.SKAgent.xpc/Contents/MacOS/com.apple.dt.SKAgent"
+
+        #expect(
+            enumerator.nearestBundlePath(forExecutablePath: appexPath)
+                == "/System/Applications/Mail.app/Contents/PlugIns/com.apple.mail.SpotlightIndexExtension.appex"
+        )
+        #expect(
+            enumerator.owningAppBundlePath(forExecutablePath: appexPath)
+                == "/System/Applications/Mail.app"
+        )
+        #expect(
+            enumerator.nearestBundlePath(forExecutablePath: xpcPath)
+                == "/Applications/Xcode.app/Contents/SharedFrameworks/SourceKit.framework/Versions/A/XPCServices/com.apple.dt.SKAgent.xpc"
+        )
+        #expect(
+            enumerator.owningAppBundlePath(forExecutablePath: xpcPath)
+                == "/Applications/Xcode.app"
+        )
+    }
+
+    @Test func launchdManagedAndAppOwnedProcessesAreNotLikelyOrphans() {
+        let launchdJob = LaunchdJobInfo(
+            label: "at.obdev.littlesnitch.agent",
+            plistPath: "/Library/LaunchAgents/at.obdev.littlesnitch.agent.plist",
+            domain: "gui/\(getuid())",
+            programPath: "/Applications/Little Snitch.app/Contents/Components/Little Snitch Agent.app/Contents/MacOS/Little Snitch Agent",
+            programArguments: nil,
+            keepAlive: true,
+            runAtLoad: true
+        )
+
+        #expect(
+            !ProcessHeuristics.isLikelyOrphaned(
+                ppid: 1,
+                launchdJob: launchdJob,
+                owningAppBundlePath: nil,
+                owningAppBundleIdentifier: nil,
+                bundlePath: "/Applications/Little Snitch.app/Contents/Components/Little Snitch Agent.app",
+                bundleIdentifier: "at.obdev.littlesnitch.agent",
+                executablePath: launchdJob.programPath
+            )
+        )
+
+        #expect(
+            !ProcessHeuristics.isLikelyOrphaned(
+                ppid: 1,
+                launchdJob: nil,
+                owningAppBundlePath: "/System/Applications/Mail.app",
+                owningAppBundleIdentifier: "com.apple.mail",
+                bundlePath: "/System/Applications/Mail.app/Contents/PlugIns/com.apple.mail.SpotlightIndexExtension.appex",
+                bundleIdentifier: "com.apple.mail.SpotlightIndexExtension",
+                executablePath: "/System/Applications/Mail.app/Contents/PlugIns/com.apple.mail.SpotlightIndexExtension.appex/Contents/MacOS/com.apple.mail.SpotlightIndexExtension"
+            )
+        )
+    }
 }

@@ -40,8 +40,8 @@ struct ProcessGroup: Identifiable, Sendable {
 
         for process in processes {
             let key: String
-            if let bundleID = process.bundleIdentifier {
-                key = bundleID
+            if let groupingIdentifier = process.groupingIdentifier {
+                key = groupingIdentifier
             } else if let path = process.executablePath {
                 // Raw binaries/scripts remain individual rows keyed by their full path.
                 key = path
@@ -56,11 +56,11 @@ struct ProcessGroup: Identifiable, Sendable {
             let icon: NSImage?
 
             if let first = procs.first {
-                displayName = first.bundlePath.flatMap { path in
+                displayName = first.groupingBundlePath.flatMap { path in
                     Bundle(path: path)?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
                     ?? Bundle(path: path)?.object(forInfoDictionaryKey: "CFBundleName") as? String
                 } ?? first.name
-                icon = first.appIcon
+                icon = first.groupingBundlePath.map { NSWorkspace.shared.icon(forFile: $0) } ?? first.appIcon
             } else {
                 displayName = key
                 icon = nil
