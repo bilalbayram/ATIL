@@ -5,6 +5,7 @@ import SwiftUI
 struct ProcessGroupHeaderView: View {
     let group: ProcessGroup
     @Environment(ProcessListViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isExpanded: Bool {
         viewModel.expandedGroupIDs.contains(group.id)
@@ -39,7 +40,7 @@ struct ProcessGroupHeaderView: View {
 
             // Expand/collapse button in PID column position
             Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                withAnimation(ATILAnimation.snappy(reduceMotion: reduceMotion)) {
                     if isExpanded {
                         viewModel.expandedGroupIDs.remove(group.id)
                     } else {
@@ -47,13 +48,15 @@ struct ProcessGroupHeaderView: View {
                     }
                 }
             } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                // Phase 3a: single chevron with rotation instead of symbol swap
+                Image(systemName: "chevron.right")
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(width: 70, height: 20)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainPressableButtonStyle())
         }
         .padding(.vertical, 2)
         .tag(group.groupIdentity)
@@ -85,7 +88,7 @@ struct ProcessGroupHeaderView: View {
             }
 
             Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                withAnimation(ATILAnimation.snappy(reduceMotion: reduceMotion)) {
                     if isExpanded {
                         viewModel.expandedGroupIDs.remove(group.id)
                     } else {

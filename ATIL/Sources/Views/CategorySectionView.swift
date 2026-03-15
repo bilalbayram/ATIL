@@ -6,6 +6,7 @@ struct CategorySectionView: View {
     let groups: [ProcessGroup]?
 
     @Environment(ProcessListViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(category: ProcessCategory, processes: [ATILProcess], groups: [ProcessGroup]? = nil) {
         self.category = category
@@ -17,10 +18,12 @@ struct CategorySectionView: View {
         Binding(
             get: { viewModel.expandedCategories.contains(category) },
             set: { expanded in
-                if expanded {
-                    viewModel.expandedCategories.insert(category)
-                } else {
-                    viewModel.expandedCategories.remove(category)
+                withAnimation(ATILAnimation.snappy(reduceMotion: reduceMotion)) {
+                    if expanded {
+                        viewModel.expandedCategories.insert(category)
+                    } else {
+                        viewModel.expandedCategories.remove(category)
+                    }
                 }
             }
         )
@@ -46,6 +49,7 @@ struct CategorySectionView: View {
                                 ProcessRowView(process: process)
                                     .tag(process.identity)
                                     .padding(.leading, 26)
+                                    .transition(.opacity)
                             }
                         }
                     } else if let process = group.processes.first {
@@ -53,6 +57,7 @@ struct CategorySectionView: View {
                             .tag(process.identity)
                     }
                 }
+                .animation(ATILAnimation.snappy(reduceMotion: reduceMotion), value: viewModel.expandedGroupIDs)
             } else {
                 ForEach(processes) { process in
                     ProcessRowView(process: process)

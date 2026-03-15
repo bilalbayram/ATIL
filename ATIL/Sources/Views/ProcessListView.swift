@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProcessListView: View {
     @Environment(ProcessListViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -17,11 +18,15 @@ struct ProcessListView: View {
                 }
             }
             .listStyle(.sidebar)
+            .animation(ATILAnimation.subtle(reduceMotion: reduceMotion), value: viewModel.searchText)
+            .animation(ATILAnimation.snappy(reduceMotion: reduceMotion), value: viewModel.showGrouped)
             .overlay {
                 if viewModel.monitor.isScanning && viewModel.monitor.snapshot.isEmpty {
                     ProgressView("Scanning processes...")
+                        .transition(.opacity)
                 } else if viewModel.filteredProcesses.isEmpty && !viewModel.searchText.isEmpty {
                     ContentUnavailableView.search(text: viewModel.searchText)
+                        .transition(.opacity)
                 }
             }
             .onKeyPress(.delete) {
@@ -59,9 +64,18 @@ struct ProcessListView: View {
             if viewModel.hasMultipleSelection {
                 BatchActionBarView(selectedCount: viewModel.selectedProcessIDs.count)
                     .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.hasMultipleSelection)
+        .animation(
+            reduceMotion
+                ? .easeOut(duration: 0.15)
+                : ATILAnimation.smooth,
+            value: viewModel.hasMultipleSelection
+        )
     }
 }

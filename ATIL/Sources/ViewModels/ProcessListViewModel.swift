@@ -125,6 +125,12 @@ final class ProcessListViewModel {
             sessionKillCount += 1
             sessionMemoryFreed += freedMemory
             selectedProcessID = nil
+
+            // Immediately remove from snapshot for instant visual feedback
+            withAnimation(ATILAnimation.subtle) {
+                monitor.snapshot.removeAll { $0.identity == process.identity }
+            }
+
             loadLifetimeStats()
             await monitor.scan()
         } catch {

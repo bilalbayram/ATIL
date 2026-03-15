@@ -113,12 +113,12 @@ private struct RuleRowView: View {
             Button(action: onEdit) {
                 Image(systemName: "pencil")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainPressableButtonStyle())
 
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainPressableButtonStyle())
         }
         .padding(.vertical, 2)
     }

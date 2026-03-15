@@ -9,6 +9,7 @@ struct BatchActionBarView: View {
         HStack(spacing: 16) {
             Text("\(selectedCount) selected")
                 .font(.headline)
+                .contentTransition(.numericText())
 
             Divider()
                 .frame(height: 20)
@@ -43,8 +44,9 @@ struct BatchActionBarView: View {
             } label: {
                 Image(systemName: "xmark")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainPressableButtonStyle())
         }
+        .animation(ATILAnimation.subtle, value: selectedCount)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.regularMaterial)

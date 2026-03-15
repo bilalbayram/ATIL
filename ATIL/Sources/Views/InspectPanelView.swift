@@ -2,6 +2,7 @@ import SwiftUI
 
 struct InspectPanelView: View {
     @Environment(ProcessListViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var inspector = ProcessInspectorViewModel()
 
     var body: some View {
@@ -215,6 +216,12 @@ struct InspectPanelView: View {
                     }
                     .padding()
                 }
+                .id(viewModel.selectedProcess?.identity)
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .opacity.combined(with: .offset(y: 6))
+                )
                 .onChange(of: viewModel.selectedProcess?.identity) {
                     inspector.selectedProcess = viewModel.selectedProcess
                     inspector.clearInspection()
@@ -225,6 +232,7 @@ struct InspectPanelView: View {
                 }
             }
         }
+        .animation(ATILAnimation.smooth(reduceMotion: reduceMotion), value: viewModel.selectedProcess?.identity)
         .frame(minWidth: 300)
     }
 }
@@ -242,14 +250,18 @@ private struct LazyInspectionSection<Content: View>: View {
         DisclosureGroup(isExpanded: $isExpanded) {
             if inspector.hasLoaded(section) {
                 content()
+                    .transition(.opacity)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
+                    .transition(.opacity)
             }
         } label: {
             SectionHeader(title)
         }
+        .animation(ATILAnimation.snappy, value: isExpanded)
+        .animation(ATILAnimation.subtle, value: inspector.hasLoaded(section))
         .onChange(of: isExpanded) {
             if isExpanded && !inspector.hasLoaded(section) && !inspector.isLoading(section) {
                 onLoad()

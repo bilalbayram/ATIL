@@ -1,7 +1,19 @@
 import SwiftUI
 
+private struct NumericRoll: ViewModifier {
+    let value: Int
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .contentTransition(.numericText())
+            .animation(ATILAnimation.subtle(reduceMotion: reduceMotion), value: value)
+    }
+}
+
 struct FooterStatsView: View {
     @Environment(ProcessListViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack {
@@ -12,11 +24,13 @@ struct FooterStatsView: View {
             Label("\(processCount) processes", systemImage: "cpu")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .modifier(NumericRoll(value: processCount, reduceMotion: reduceMotion))
 
             if redundantCount > 0 {
                 Text("\(redundantCount) redundant")
                     .font(.caption)
                     .foregroundStyle(.orange)
+                    .modifier(NumericRoll(value: redundantCount, reduceMotion: reduceMotion))
 
                 Text("(\(formatBytes(viewModel.totalRedundantMemory)) reclaimable)")
                     .font(.caption)
@@ -27,6 +41,7 @@ struct FooterStatsView: View {
                 Text("\(quarantinedCount) quarantined")
                     .font(.caption)
                     .foregroundStyle(.purple)
+                    .modifier(NumericRoll(value: quarantinedCount, reduceMotion: reduceMotion))
             }
 
             Spacer()

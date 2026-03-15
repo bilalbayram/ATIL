@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 @Observable
 @MainActor
@@ -82,7 +83,13 @@ final class ProcessMonitor {
         previousCPUTimes = newCPUTimes
         previousSeenTimes = newSeenTimes
 
-        snapshot = classified
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            snapshot = classified
+        } else {
+            withAnimation(ATILAnimation.subtle) {
+                snapshot = classified
+            }
+        }
 
         // Evaluate auto-action rules
         lastRuleResults = await ruleEngine.evaluate(processes: classified)

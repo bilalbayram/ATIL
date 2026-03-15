@@ -2,8 +2,20 @@ import SwiftUI
 
 struct MainWindowView: View {
     @Environment(ProcessListViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingHistory = false
     @State private var showingRules = false
+
+    private var refreshIcon: some View {
+        Image(systemName: "arrow.clockwise")
+            .rotationEffect(.degrees(viewModel.monitor.isScanning && !reduceMotion ? 360 : 0))
+            .animation(
+                viewModel.monitor.isScanning && !reduceMotion
+                    ? .linear(duration: 1).repeatForever(autoreverses: false)
+                    : .default,
+                value: viewModel.monitor.isScanning
+            )
+    }
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -17,15 +29,19 @@ struct MainWindowView: View {
             }
             .navigationSplitViewColumnWidth(min: 350, ideal: 500)
         } detail: {
-            if viewModel.selectedProcess != nil {
-                InspectPanelView()
-            } else {
-                ContentUnavailableView(
-                    "No Process Selected",
-                    systemImage: "cpu",
-                    description: Text("Select a process to inspect its details")
-                )
+            Group {
+                if viewModel.selectedProcess != nil {
+                    InspectPanelView()
+                } else {
+                    ContentUnavailableView(
+                        "No Process Selected",
+                        systemImage: "cpu",
+                        description: Text("Select a process to inspect its details")
+                    )
+                }
             }
+            .contentTransition(.opacity)
+            .animation(ATILAnimation.subtle, value: viewModel.selectedProcess != nil)
         }
         .navigationTitle("ATIL")
         .focusedSceneValue(\.viewModel, viewModel)
@@ -70,7 +86,7 @@ struct MainWindowView: View {
                 Button {
                     Task { await viewModel.refresh() }
                 } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+                    Label { Text("Refresh") } icon: { refreshIcon }
                 }
                 .help("Refresh process list")
                 .disabled(viewModel.monitor.isScanning)
