@@ -21,9 +21,17 @@ struct StartupItemsView: View {
             .navigationSplitViewColumnWidth(min: 280, ideal: 320)
         } detail: {
             Group {
-                if let group = viewModel.selectedGroup {
+                if viewModel.isLoadingInitialSnapshot {
+                    ContentUnavailableView {
+                        ProgressView()
+                    } description: {
+                        Text("Scanning startup and background items...")
+                    }
+                } else if let group = viewModel.selectedGroup {
                     VStack(alignment: .leading, spacing: 0) {
                         StartupGroupHeader(group: group)
+                        Divider()
+                        StartupActionPanel(group: group)
                         Divider()
                         List(selection: $vm.selectedItemID) {
                             ForEach(group.items) { item in
@@ -137,20 +145,15 @@ private struct StartupFilterChip: View {
 
 private struct StartupGroupRow: View {
     let group: StartupAppGroup
-    @Environment(StartupItemsViewModel.self) private var viewModel
 
     var body: some View {
         HStack(spacing: 10) {
-            if let icon = viewModel.icon(for: group) {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 26, height: 26)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else {
-                Image(systemName: "app.dashed")
-                    .frame(width: 26, height: 26)
-                    .foregroundStyle(.secondary)
-            }
+            StartupAppIconView(
+                group: group,
+                size: 26,
+                cornerRadius: 6,
+                placeholderSystemName: "app.dashed"
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.app.displayName)
@@ -179,21 +182,15 @@ private struct StartupGroupRow: View {
 
 private struct StartupGroupHeader: View {
     let group: StartupAppGroup
-    @Environment(StartupItemsViewModel.self) private var viewModel
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            if let icon = viewModel.icon(for: group) {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
-                Image(systemName: "app.badge")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-            }
+            StartupAppIconView(
+                group: group,
+                size: 44,
+                cornerRadius: 10,
+                placeholderSystemName: "app.badge"
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.app.displayName)
@@ -203,44 +200,210 @@ private struct StartupGroupHeader: View {
                     Text(bundleIdentifier)
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
 
-                HStack(spacing: 8) {
-                    if group.isBlocked {
-                        StatusBadgeView(text: "blocked", icon: "shield.slash", color: .red)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        badges
                     }
-                    if group.enabledItemCount > 0 {
-                        StatusBadgeView(text: "\(group.enabledItemCount) enabled", icon: "power", color: .green)
-                    }
-                    if group.runningItemCount > 0 {
-                        StatusBadgeView(text: "\(group.runningItemCount) running", icon: "waveform.path.ecg", color: .mint)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        badges
                     }
                 }
             }
 
             Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+    }
 
-            HStack(spacing: 10) {
-                if group.isBlocked {
-                    Button("Unblock App") {
-                        viewModel.unblockSelectedApp()
-                    }
-                } else {
-                    Button("Block App") {
-                        viewModel.blockSelectedApp()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
+    @ViewBuilder
+    private var badges: some View {
+        if group.isBlocked {
+            StatusBadgeView(text: "blocked", icon: "shield.slash", color: .red)
+        }
+        if group.enabledItemCount > 0 {
+            StatusBadgeView(text: "\(group.enabledItemCount) enabled", icon: "power", color: .green)
+        }
+        if group.runningItemCount > 0 {
+            StatusBadgeView(text: "\(group.runningItemCount) running", icon: "waveform.path.ecg", color: .mint)
+        }
+    }
+}
+
+private struct StartupActionPanel: View {
+    @Environment(StartupItemsViewModel.self) private var viewModel
+
+    let group: StartupAppGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    refreshButton
+                    blockButton
+                    disableButton
+                    moreButton
                 }
 
-                Button {
-                    Task { await viewModel.refresh() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        refreshButton
+                        blockButton
+                    }
+
+                    HStack(spacing: 8) {
+                        disableButton
+                        moreButton
+                    }
                 }
             }
+
+            StartupActionStatusLine(
+                feedback: viewModel.actionFeedback,
+                selectedItemLabel: viewModel.selectedItem?.displayLabel
+            )
         }
-        .padding(16)
+        .controlSize(.small)
+        .buttonStyle(.bordered)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 820, alignment: .leading)
+    }
+
+    private var refreshButton: some View {
+        Button {
+            Task { await viewModel.refreshManually() }
+        } label: {
+            Label("Refresh", systemImage: "arrow.clockwise")
+        }
+        .disabled(viewModel.isPerformingUserAction)
+    }
+
+    private var blockButton: some View {
+        Button {
+            Task {
+                if group.isBlocked {
+                    await viewModel.unblockSelectedApp()
+                } else {
+                    await viewModel.blockSelectedApp()
+                }
+            }
+        } label: {
+            Label(group.isBlocked ? "Unblock App" : "Block App", systemImage: group.isBlocked ? "shield" : "shield.slash")
+        }
+        .disabled(viewModel.isPerformingUserAction)
+    }
+
+    private var disableButton: some View {
+        Button {
+            Task { await viewModel.disableSelectedItem() }
+        } label: {
+            Label("Disable", systemImage: "power.slash")
+        }
+        .disabled(!canDisableSelectedItem)
+    }
+
+    private var moreButton: some View {
+        Menu {
+            Button("Kill Current Process") {
+                Task { await viewModel.killSelectedProcess() }
+            }
+            .disabled(viewModel.selectedRunningProcess == nil || viewModel.isPerformingUserAction)
+
+            Button("Reveal File") {
+                viewModel.revealSelectedItem()
+            }
+            .disabled(!canRevealSelectedItem || viewModel.isPerformingUserAction)
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+        }
+        .disabled(viewModel.selectedItem == nil || viewModel.isPerformingUserAction)
+    }
+
+    private var canDisableSelectedItem: Bool {
+        guard let item = viewModel.selectedItem else { return false }
+        return item.canDisable && item.state != .unknown && !viewModel.isPerformingUserAction
+    }
+
+    private var canRevealSelectedItem: Bool {
+        guard let item = viewModel.selectedItem else { return false }
+        return item.plistPath != nil || item.executablePath != nil
+    }
+}
+
+private struct StartupActionStatusLine: View {
+    let feedback: StartupActionFeedback?
+    let selectedItemLabel: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let feedback {
+                switch feedback.style {
+                case .progress:
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(feedback.message)
+                        .foregroundStyle(.secondary)
+                case .success:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(feedback.message)
+                        .foregroundStyle(.green)
+                }
+            } else if let selectedItemLabel {
+                Image(systemName: "cursorarrow.click.2")
+                    .foregroundStyle(.secondary)
+                Text("Selected item: \(selectedItemLabel)")
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "sidebar.left")
+                    .foregroundStyle(.secondary)
+                Text("Select a startup item to disable, reveal, or stop it.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
+        .frame(minHeight: 18, alignment: .leading)
+    }
+}
+
+private struct StartupAppIconView: View {
+    let group: StartupAppGroup
+    let size: CGFloat
+    let cornerRadius: CGFloat
+    let placeholderSystemName: String
+
+    @Environment(StartupItemsViewModel.self) private var viewModel
+
+    var body: some View {
+        Group {
+            if let icon = viewModel.icon(for: group) {
+                Image(nsImage: icon)
+                    .resizable()
+            } else {
+                Image(systemName: placeholderSystemName)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.18)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .background(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color.secondary.opacity(0.08))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .task(id: group.id) {
+            viewModel.loadIconIfNeeded(for: group)
+        }
     }
 }
 
@@ -293,48 +456,16 @@ private struct StartupItemDetail: View {
             if let item = viewModel.selectedItem {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.displayLabel)
-                                    .font(.headline)
+                        StartupDetailHeadline(item: item)
 
-                                Text(item.kind.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            HStack(spacing: 10) {
-                                Button("Disable") {
-                                    Task { await viewModel.disableSelectedItem() }
-                                }
-                                .disabled(!item.canDisable || item.state == .unknown)
-
-                                Button("Kill Current Process") {
-                                    Task { await viewModel.killSelectedProcess() }
-                                }
-                                .disabled(viewModel.selectedRunningProcess == nil)
-
-                                Button("Reveal File") {
-                                    viewModel.revealSelectedItem()
-                                }
-                                .disabled(item.plistPath == nil && item.executablePath == nil)
-                            }
-                        }
-
-                        LazyVGrid(
-                            columns: [GridItem(.flexible()), GridItem(.flexible())],
-                            alignment: .leading,
-                            spacing: 12
-                        ) {
-                            StartupInfoRow(label: "State", value: item.state.displayName)
-                            StartupInfoRow(label: "Scope", value: item.scope.displayName)
-                            StartupInfoRow(label: "Kind", value: item.kind.displayName)
-                            StartupInfoRow(label: "Confidence", value: item.attributionConfidence.displayName)
-                            StartupInfoRow(label: "Needs Helper", value: item.requiresHelper ? "Yes" : "No")
-                            StartupInfoRow(label: "Blocked", value: viewModel.isBlocked(item) ? "Yes" : "No")
-                        }
+                        StartupDetailFacts(rows: [
+                            ("State", item.state.displayName),
+                            ("Scope", item.scope.displayName),
+                            ("Kind", item.kind.displayName),
+                            ("Confidence", item.attributionConfidence.displayName),
+                            ("Needs Helper", item.requiresHelper ? "Yes" : "No"),
+                            ("Blocked", viewModel.isBlocked(item) ? "Yes" : "No")
+                        ])
 
                         if let label = item.label {
                             StartupMonospaceValue(label: "Launchd Label", value: label)
@@ -352,16 +483,12 @@ private struct StartupItemDetail: View {
                         if let process = viewModel.selectedRunningProcess {
                             Divider()
                             StartupSectionHeader("Running Process")
-                            LazyVGrid(
-                                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                                alignment: .leading,
-                                spacing: 12
-                            ) {
-                                StartupInfoRow(label: "PID", value: "\(process.pid)")
-                                StartupInfoRow(label: "Memory", value: formatBytes(process.residentMemory))
-                                StartupInfoRow(label: "CPU %", value: String(format: "%.1f", process.cpuPercent))
-                                StartupInfoRow(label: "Started", value: formatDateTime(process.startTime))
-                            }
+                            StartupDetailFacts(rows: [
+                                ("PID", "\(process.pid)"),
+                                ("Memory", formatBytes(process.residentMemory)),
+                                ("CPU %", String(format: "%.1f", process.cpuPercent)),
+                                ("Started", formatDateTime(process.startTime))
+                            ])
                         }
 
                         if item.state == .unknown {
@@ -370,6 +497,8 @@ private struct StartupItemDetail: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
                 }
             } else {
@@ -387,6 +516,33 @@ private struct StartupItemDetail: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+private struct StartupDetailHeadline: View {
+    let item: StartupItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.displayLabel)
+                .font(.headline)
+
+            Text(item.kind.displayName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct StartupDetailFacts: View {
+    let rows: [(label: String, value: String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                StartupInfoRow(label: row.label, value: row.value)
+            }
+        }
     }
 }
 
@@ -425,13 +581,15 @@ private struct StartupInfoRow: View {
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(width: 110, alignment: .leading)
             Text(value)
                 .font(.body)
                 .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

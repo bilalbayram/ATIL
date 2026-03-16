@@ -126,7 +126,7 @@ struct MainWindowView: View {
                 StartupItemsView()
                     .environment(viewModel.startupItems)
             }
-            .frame(minWidth: 900, minHeight: 620)
+            .frame(minWidth: 920, idealWidth: 1080, minHeight: 640, idealHeight: 760)
         }
         .sheet(isPresented: $vm.showingLaunchdConfirmation) {
             if let process = viewModel.launchdConfirmProcess {

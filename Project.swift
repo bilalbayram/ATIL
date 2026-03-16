@@ -16,18 +16,33 @@ let project = Project(
             ],
             copyFiles: [
                 .wrapper(
-                    name: "Embed Helper Tool",
-                    subpath: "Contents/Library/HelperTools",
-                    files: [
-                        "$(BUILT_PRODUCTS_DIR)/ATILHelper",
-                    ]
-                ),
-                .wrapper(
                     name: "Embed Helper Plist",
                     subpath: "Contents/Library/LaunchDaemons",
                     files: [
                         "SupportingFiles/dev.tuist.ATIL.Helper.plist",
                     ]
+                ),
+            ],
+            scripts: [
+                .post(
+                    script: """
+                    set -eu
+
+                    source_path="${BUILT_PRODUCTS_DIR}/ATILHelper"
+                    destination_dir="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Library/HelperTools"
+                    destination_path="${destination_dir}/ATILHelper"
+
+                    mkdir -p "$destination_dir"
+                    install -m 755 "$source_path" "$destination_path"
+                    """,
+                    name: "Embed Helper Tool",
+                    inputPaths: [
+                        "$(BUILT_PRODUCTS_DIR)/ATILHelper",
+                    ],
+                    outputPaths: [
+                        "$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/Contents/Library/HelperTools/ATILHelper",
+                    ],
+                    basedOnDependencyAnalysis: true
                 ),
             ],
             dependencies: [

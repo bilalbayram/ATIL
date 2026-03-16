@@ -3,9 +3,13 @@ import Foundation
 struct LaunchdDisabledStateReader: Sendable {
     typealias CommandRunner = @Sendable ([String]) -> String?
 
+    private static let defaultCommandRunner: CommandRunner = { arguments in
+        runLaunchctl(arguments: arguments)
+    }
+
     private let commandRunner: CommandRunner
 
-    init(commandRunner: @escaping CommandRunner = LaunchdDisabledStateReader.runLaunchctl) {
+    init(commandRunner: @escaping CommandRunner = LaunchdDisabledStateReader.defaultCommandRunner) {
         self.commandRunner = commandRunner
     }
 

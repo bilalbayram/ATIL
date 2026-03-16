@@ -33,7 +33,14 @@ struct StartupAttributionService: Sendable {
     private let codeSignatureReader = CodeSignatureReader()
 
     func discoverContext() -> StartupDiscoveryContext {
-        let installedApps = discoverInstalledApps()
+        let runningApplicationPaths = Set(
+            NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }
+        )
+        return discoverContext(runningApplicationPaths: runningApplicationPaths)
+    }
+
+    func discoverContext(runningApplicationPaths: Set<String>) -> StartupDiscoveryContext {
+        let installedApps = discoverInstalledApps(runningApplicationPaths: runningApplicationPaths)
         let appsByBundleIdentifier: [String: InstalledAppInfo] = Dictionary(
             uniqueKeysWithValues: installedApps.compactMap { app in
                 guard let bundleIdentifier = app.bundleIdentifier else { return nil }
@@ -140,16 +147,14 @@ struct StartupAttributionService: Sendable {
         )
     }
 
-    private func discoverInstalledApps() -> [InstalledAppInfo] {
+    private func discoverInstalledApps(runningApplicationPaths: Set<String>) -> [InstalledAppInfo] {
         let fm = FileManager.default
         let searchRoots = [
             "/Applications",
             "\(NSHomeDirectory())/Applications",
         ]
 
-        var appPaths = Set(
-            NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }
-        )
+        var appPaths = runningApplicationPaths
 
         for root in searchRoots {
             guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }

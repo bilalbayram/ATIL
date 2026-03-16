@@ -27,7 +27,7 @@ enum StartupFilter: String, CaseIterable, Identifiable, Sendable {
         case .enabled: "power"
         case .blocked: "shield.slash"
         case .system: "lock.shield"
-        case .needsHelper: "exclamationmark.key.fill"
+        case .needsHelper: "key.fill"
         case .running: "waveform.path.ecg"
         case .unknown: "questionmark.circle"
         }
@@ -45,9 +45,25 @@ enum StartupFilter: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum StartupActionFeedbackStyle: Sendable {
+    case progress
+    case success
+}
+
+struct StartupActionFeedback: Identifiable, Sendable {
+    let id = UUID()
+    let message: String
+    let style: StartupActionFeedbackStyle
+}
+
 @Observable
 @MainActor
 final class StartupItemsViewModel {
+    private struct StartupRefreshSnapshot: Sendable {
+        let items: [StartupItem]
+        let rules: [StartupBlockRule]
+    }
+
     private let processProvider: @MainActor () -> [ATILProcess]
     private let processRefreshAction: @MainActor () async -> Void
     private let inventoryService: StartupInventoryService
@@ -58,6 +74,10 @@ final class StartupItemsViewModel {
     private var watchers: [DirectoryWatcher] = []
     private var reconciliationTask: Task<Void, Never>?
     private var pendingFocus: StartupItemFocus?
+    private var iconCache: [String: NSImage] = [:]
+    private var loadingIconKeys: Set<String> = []
+    private var hasLoadedSnapshot = false
+    private var feedbackResetTask: Task<Void, Never>?
 
     var items: [StartupItem] = []
     var blockRules: [StartupBlockRule] = []
@@ -66,6 +86,8 @@ final class StartupItemsViewModel {
     var selectedGroupID: String?
     var selectedItemID: String?
     var isRefreshing = false
+    var isPerformingUserAction = false
+    var actionFeedback: StartupActionFeedback?
     var lastError: String?
 
     init(
@@ -133,6 +155,10 @@ final class StartupItemsViewModel {
         HelperClient.shared.isHelperInstalled
     }
 
+    var isLoadingInitialSnapshot: Bool {
+        isRefreshing && !hasLoadedSnapshot && items.isEmpty
+    }
+
     func startMonitoring() {
         guard reconciliationTask == nil else { return }
 
@@ -165,12 +191,15 @@ final class StartupItemsViewModel {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        applySnapshot(
-            items: inventoryService.scan(processes: processProvider()),
-            rules: (try? blockRepository.allRules()) ?? []
+        let initialSnapshot = await loadSnapshot(
+            processes: processProvider(),
+            runningApplicationPaths: Set(
+                NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }
+            )
         )
+        applySnapshot(items: initialSnapshot.items, rules: initialSnapshot.rules)
 
-        let blockedItems = items.filter { item in
+        let blockedItems = initialSnapshot.items.filter { item in
             guard isBlocked(item), item.canDisable else { return false }
             if item.scope == .system && !helperInstalled {
                 return false
@@ -189,15 +218,19 @@ final class StartupItemsViewModel {
         }
 
         await processRefreshAction()
-        applySnapshot(
-            items: inventoryService.scan(processes: processProvider()),
-            rules: (try? blockRepository.allRules()) ?? []
+        let refreshedSnapshot = await loadSnapshot(
+            processes: processProvider(),
+            runningApplicationPaths: Set(
+                NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }
+            )
         )
+        applySnapshot(items: refreshedSnapshot.items, rules: refreshedSnapshot.rules)
     }
 
     func applySnapshot(items: [StartupItem], rules: [StartupBlockRule]) {
         self.items = items
         self.blockRules = rules
+        hasLoadedSnapshot = true
         synchronizeSelection()
     }
 
@@ -236,50 +269,63 @@ final class StartupItemsViewModel {
             return
         }
 
-        do {
+        await performUserAction(
+            progress: "Disabling \(item.displayLabel)…",
+            success: "Disabled \(item.displayLabel)."
+        ) {
             if item.scope == .system && !HelperClient.shared.isHelperInstalled {
                 try await HelperClient.shared.installHelper()
             }
             try await controlService.disable(item)
             await processRefreshAction()
             await refresh()
-        } catch {
-            lastError = error.localizedDescription
         }
     }
 
-    func blockSelectedApp() {
+    func refreshManually() async {
+        await performUserAction(
+            progress: "Refreshing startup items…",
+            success: "Startup items updated."
+        ) {
+            await refresh()
+        }
+    }
+
+    func blockSelectedApp() async {
         guard let group = selectedGroup else { return }
 
-        do {
+        await performUserAction(
+            progress: "Blocking \(group.app.displayName)…",
+            success: "Blocked \(group.app.displayName)."
+        ) {
             _ = try blockRepository.save(StartupBlockRule(app: group.app, items: group.items))
-            Task { await refresh() }
-        } catch {
-            lastError = error.localizedDescription
+            await refresh()
         }
     }
 
-    func unblockSelectedApp() {
+    func unblockSelectedApp() async {
         guard let rule = selectedGroup.flatMap(blockRule(for:)) else { return }
         guard let id = rule.id else { return }
 
-        do {
+        await performUserAction(
+            progress: "Removing startup block…",
+            success: "Startup block removed."
+        ) {
             try blockRepository.delete(ruleID: id)
-            Task { await refresh() }
-        } catch {
-            lastError = error.localizedDescription
+            await refresh()
         }
     }
 
     func killSelectedProcess() async {
         guard let process = selectedRunningProcess else { return }
 
-        do {
+        await performUserAction(
+            progress: "Killing \(process.name)…",
+            success: "Stopped \(process.name)."
+        ) {
             _ = try await actionService.kill(process: process)
             await processRefreshAction()
             await refresh()
-        } catch {
-            lastError = error.localizedDescription
         }
     }
 
@@ -299,13 +345,27 @@ final class StartupItemsViewModel {
     }
 
     func icon(for group: StartupAppGroup) -> NSImage? {
-        if let bundlePath = group.app.bundlePath {
-            return NSWorkspace.shared.icon(forFile: bundlePath)
+        guard let request = iconRequest(for: group) else { return nil }
+        return iconCache[request.cacheKey]
+    }
+
+    func loadIconIfNeeded(for group: StartupAppGroup) {
+        guard let request = iconRequest(for: group),
+              iconCache[request.cacheKey] == nil,
+              !loadingIconKeys.contains(request.cacheKey)
+        else {
+            return
         }
-        if let executablePath = group.items.compactMap(\.executablePath).first {
-            return NSWorkspace.shared.icon(forFile: executablePath)
+
+        loadingIconKeys.insert(request.cacheKey)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await Task.yield()
+
+            let icon = NSWorkspace.shared.icon(forFile: request.path)
+            self.iconCache[request.cacheKey] = icon
+            self.loadingIconKeys.remove(request.cacheKey)
         }
-        return nil
     }
 
     private func matchesSearch(_ item: StartupItem) -> Bool {
@@ -377,5 +437,66 @@ final class StartupItemsViewModel {
         selectedItemID = focus.label.flatMap { label in
             focusedGroup?.items.first(where: { $0.label == label })?.id
         } ?? focusedGroup?.items.first?.id ?? groups.first?.items.first?.id
+    }
+
+    private func loadSnapshot(
+        processes: [ATILProcess],
+        runningApplicationPaths: Set<String>
+    ) async -> StartupRefreshSnapshot {
+        let inventoryService = self.inventoryService
+        let blockRepository = self.blockRepository
+
+        return await Task.detached(priority: .userInitiated) {
+            StartupRefreshSnapshot(
+                items: inventoryService.scan(
+                    processes: processes,
+                    runningApplicationPaths: runningApplicationPaths
+                ),
+                rules: (try? blockRepository.allRules()) ?? []
+            )
+        }.value
+    }
+
+    private func iconRequest(for group: StartupAppGroup) -> (cacheKey: String, path: String)? {
+        if let bundlePath = group.app.bundlePath {
+            return (bundlePath, bundlePath)
+        }
+        if let executablePath = group.items.compactMap(\.executablePath).first {
+            return (executablePath, executablePath)
+        }
+        return nil
+    }
+
+    private func performUserAction(
+        progress: String,
+        success: String,
+        operation: () async throws -> Void
+    ) async {
+        guard !isPerformingUserAction else { return }
+
+        feedbackResetTask?.cancel()
+        isPerformingUserAction = true
+        actionFeedback = StartupActionFeedback(message: progress, style: .progress)
+
+        do {
+            try await operation()
+            isPerformingUserAction = false
+            actionFeedback = StartupActionFeedback(message: success, style: .success)
+            scheduleFeedbackReset()
+        } catch {
+            isPerformingUserAction = false
+            actionFeedback = nil
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func scheduleFeedbackReset() {
+        feedbackResetTask?.cancel()
+        feedbackResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard let self, !Task.isCancelled else { return }
+            guard !self.isPerformingUserAction else { return }
+            self.actionFeedback = nil
+        }
     }
 }

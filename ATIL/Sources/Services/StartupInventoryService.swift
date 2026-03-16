@@ -26,10 +26,11 @@ struct StartupInventoryService: Sendable {
         self.attributionService = attributionService
     }
 
-    func scan(processes: [ATILProcess]) -> [StartupItem] {
+    func scan(processes: [ATILProcess], runningApplicationPaths: Set<String>? = nil) -> [StartupItem] {
         let jobs = launchdJobsProvider()
         let disabledStates = disabledStatesProvider()
-        let discovery = discoveryProvider()
+        let discovery = runningApplicationPaths.map(attributionService.discoverContext(runningApplicationPaths:))
+            ?? discoveryProvider()
         let curatedAttributions = curatedAttributionsProvider()
 
         var items: [StartupItem] = jobs.map { job in
