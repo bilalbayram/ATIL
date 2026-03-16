@@ -161,6 +161,20 @@ struct RuleCondition: Codable, Sendable {
     }
 }
 
+// MARK: - MatcherType Display
+
+extension AutoRule.MatcherType {
+    var displayName: String {
+        switch self {
+        case .name: "Process Name"
+        case .path: "Executable Path"
+        case .bundleId: "Bundle ID"
+        case .launchdLabel: "Launchd Label"
+        case .regex: "Regex Pattern"
+        }
+    }
+}
+
 // MARK: - Rule Event
 
 struct RuleEvent: Codable, FetchableRecord, PersistableRecord, Identifiable, Sendable {

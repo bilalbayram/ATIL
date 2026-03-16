@@ -98,7 +98,7 @@ struct MainWindowView: View {
             NavigationStack {
                 RulesListView()
             }
-            .frame(minWidth: 500, minHeight: 400)
+            .frame(minWidth: 560, minHeight: 480)
         }
         .sheet(isPresented: $showingHistory) {
             NavigationStack {
