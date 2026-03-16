@@ -95,9 +95,7 @@ struct MainWindowView: View {
             }
         }
         .sheet(isPresented: $showingRules) {
-            NavigationStack {
-                RulesListView()
-            }
+            RulesListView()
             .frame(minWidth: 560, minHeight: 480)
         }
         .sheet(isPresented: $showingHistory) {
@@ -107,14 +105,12 @@ struct MainWindowView: View {
             .frame(minWidth: 560, minHeight: 420)
         }
         .sheet(isPresented: $vm.showingRuleBuilder) {
-            if var rule = viewModel.ruleBuilderRule {
-                RuleBuilderView(rule: Binding(
-                    get: { rule },
-                    set: { rule = $0 }
-                )) { saved in
+            if let rule = viewModel.ruleBuilderRule {
+                RuleBuilderView(initialRule: rule) { saved in
                     viewModel.saveRule(saved)
                 } onCancel: {
                     viewModel.showingRuleBuilder = false
+                    viewModel.ruleBuilderRule = nil
                 }
             }
         }

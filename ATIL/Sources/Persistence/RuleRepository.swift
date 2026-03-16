@@ -4,6 +4,11 @@ import GRDB
 struct RuleRepository: Sendable {
     let db: DatabaseManager
 
+    struct ActivitySummary: Sendable {
+        let lastTriggeredAt: Date?
+        let triggerCountToday: Int
+    }
+
     // MARK: - Rules CRUD
 
     func allRules() throws -> [AutoRule] {
@@ -72,5 +77,58 @@ struct RuleRepository: Sendable {
         }
         let cooldownEnd = lastEvent.timestamp.addingTimeInterval(TimeInterval(cooldownSeconds))
         return Date() < cooldownEnd
+    }
+
+    func activitySummaries() throws -> [Int64: ActivitySummary] {
+        try db.dbPool.read { db in
+            struct LastEventRow: FetchableRecord, Decodable {
+                let ruleId: Int64
+                let lastTriggeredAt: Date
+            }
+
+            struct CountRow: FetchableRecord, Decodable {
+                let ruleId: Int64
+                let triggerCountToday: Int
+            }
+
+            let lastEventRows = try LastEventRow.fetchAll(
+                db,
+                sql: """
+                    SELECT ruleId, MAX(timestamp) AS lastTriggeredAt
+                    FROM ruleEvents
+                    GROUP BY ruleId
+                """
+            )
+
+            let startOfDay = Calendar.current.startOfDay(for: Date())
+            let countRows = try CountRow.fetchAll(
+                db,
+                sql: """
+                    SELECT ruleId, COUNT(*) AS triggerCountToday
+                    FROM ruleEvents
+                    WHERE timestamp >= ?
+                    GROUP BY ruleId
+                """,
+                arguments: [startOfDay]
+            )
+
+            var summaries: [Int64: ActivitySummary] = [:]
+            for row in lastEventRows {
+                summaries[row.ruleId] = ActivitySummary(
+                    lastTriggeredAt: row.lastTriggeredAt,
+                    triggerCountToday: 0
+                )
+            }
+
+            for row in countRows {
+                let existing = summaries[row.ruleId]
+                summaries[row.ruleId] = ActivitySummary(
+                    lastTriggeredAt: existing?.lastTriggeredAt,
+                    triggerCountToday: row.triggerCountToday
+                )
+            }
+
+            return summaries
+        }
     }
 }

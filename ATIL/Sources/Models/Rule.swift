@@ -161,6 +161,167 @@ struct RuleCondition: Codable, Sendable {
     }
 }
 
+// MARK: - Rule Presentation
+
+extension AutoRule.RuleAction {
+    var summaryPhrase: String {
+        switch self {
+        case .kill: "kill them"
+        case .suspend: "suspend them"
+        case .markRedundant: "mark them as redundant"
+        case .markSuspicious: "mark them as suspicious"
+        }
+    }
+}
+
+extension RuleCondition {
+    var summaryFragment: String {
+        switch type {
+        case .cpuIdleGreaterThan:
+            if let seconds = TimeInterval(value), seconds > 0 {
+                return "they have been idle for over \(formatDuration(seconds))"
+            }
+            return "their idle time is over \(value) seconds"
+
+        case .memoryGreaterThan:
+            if let bytes = UInt64(value), bytes > 0 {
+                return "they use over \(formatBytes(bytes)) of memory"
+            }
+            return "their memory use is over \(value) bytes"
+
+        case .isOrphaned:
+            return "they are orphaned"
+
+        case .isZombie:
+            return "they are zombie processes"
+
+        case .noTTY:
+            return "they do not have a terminal"
+
+        case .hasSockets:
+            return "they have open sockets"
+
+        case .noSockets:
+            return "they have no open sockets"
+
+        case .hasOwningApp:
+            return "they belong to an app"
+
+        case .noOwningApp:
+            return "they have no owning app"
+        }
+    }
+
+    var badgeText: String {
+        switch type {
+        case .cpuIdleGreaterThan:
+            if let seconds = TimeInterval(value), seconds > 0 {
+                return "idle > \(formatDuration(seconds))"
+            }
+            return "idle > \(value)s"
+
+        case .memoryGreaterThan:
+            if let bytes = UInt64(value), bytes > 0 {
+                return "mem > \(formatBytes(bytes))"
+            }
+            return "mem > \(value)"
+
+        case .isOrphaned:
+            return "orphaned"
+
+        case .isZombie:
+            return "zombie"
+
+        case .noTTY:
+            return "no terminal"
+
+        case .hasSockets:
+            return "has sockets"
+
+        case .noSockets:
+            return "no sockets"
+
+        case .hasOwningApp:
+            return "has app"
+
+        case .noOwningApp:
+            return "no app"
+        }
+    }
+}
+
+extension AutoRule {
+    var targetDescription: String {
+        let value = matcherValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "these processes" }
+
+        switch matcherType {
+        case .name:
+            return "processes named \(value)"
+        case .path:
+            return "processes at \(value)"
+        case .bundleId:
+            return "processes from app \(value)"
+        case .launchdLabel:
+            return "launchd jobs labeled \(value)"
+        case .regex:
+            return "processes whose names match \(value)"
+        }
+    }
+
+    var shortTargetLabel: String {
+        let value = matcherValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "rule" }
+
+        switch matcherType {
+        case .path:
+            return URL(fileURLWithPath: value).lastPathComponent
+        default:
+            return value
+        }
+    }
+
+    var suggestedName: String {
+        var name = "\(action.displayName) \(shortTargetLabel)"
+        if let idleCondition = conditions.first(where: { $0.type == .cpuIdleGreaterThan }),
+           let seconds = TimeInterval(idleCondition.value),
+           seconds > 0 {
+            name += " after \(formatDuration(seconds)) idle"
+        }
+        return name
+    }
+
+    var summarySentence: String {
+        var parts = ["When \(targetDescription)"]
+        let conditionDescriptions = conditions.map(\.summaryFragment)
+        if !conditionDescriptions.isEmpty {
+            parts[0] += " and \(naturalLanguageList(conditionDescriptions))"
+        }
+
+        parts.append(action.summaryPhrase)
+        parts.append("at most once every \(formatDuration(TimeInterval(cooldownSeconds)))")
+
+        if let contextDescription {
+            parts.append(contextDescription)
+        }
+
+        return parts.joined(separator: ", ") + "."
+    }
+
+    private var contextDescription: String? {
+        guard let contextAppBundleId,
+              !contextAppBundleId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let contextAppMustBeRunning
+        else {
+            return nil
+        }
+
+        return contextAppMustBeRunning
+            ? "only while \(contextAppBundleId) is running"
+            : "only when \(contextAppBundleId) is not running"
+    }
+}
+
 // MARK: - MatcherType Display
 
 extension AutoRule.MatcherType {
@@ -172,6 +333,20 @@ extension AutoRule.MatcherType {
         case .launchdLabel: "Launchd Label"
         case .regex: "Regex Pattern"
         }
+    }
+}
+
+private func naturalLanguageList(_ items: [String]) -> String {
+    switch items.count {
+    case 0:
+        return ""
+    case 1:
+        return items[0]
+    case 2:
+        return "\(items[0]) and \(items[1])"
+    default:
+        let prefix = items.dropLast().joined(separator: ", ")
+        return "\(prefix), and \(items[items.count - 1])"
     }
 }
 

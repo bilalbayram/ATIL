@@ -150,6 +150,13 @@ final class RuleEngine {
         return rule
     }
 
+    func previewMatches(for rule: AutoRule, in processes: [ATILProcess]) -> [ATILProcess] {
+        let runningApps = runningAppSet()
+        return processes.filter { process in
+            shouldEvaluate(rule: rule, process: process, runningApps: runningApps)
+        }
+    }
+
     private func runningAppSet() -> Set<String> {
         Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
     }
