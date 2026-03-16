@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class ProcessListViewModel {
     let monitor: ProcessMonitor
+    let startupItems: StartupItemsViewModel
     private let actionService = ProcessActionService()
     private let safetyGate = SafetyGate.shared
     private let statsRepo = StatsRepository(db: DatabaseManager.shared)
@@ -32,6 +33,7 @@ final class ProcessListViewModel {
     var ruleBuilderRule: AutoRule?
     var showingLaunchdConfirmation = false
     var launchdConfirmProcess: ATILProcess?
+    var showingStartupItems = false
     let sessionStartedAt = Date()
 
     // Session stats
@@ -44,7 +46,12 @@ final class ProcessListViewModel {
     var lifetimeMemoryFreed: Int64 = 0
 
     init(monitor: ProcessMonitor? = nil) {
-        self.monitor = monitor ?? ProcessMonitor()
+        let resolvedMonitor = monitor ?? ProcessMonitor()
+        self.monitor = resolvedMonitor
+        self.startupItems = StartupItemsViewModel(
+            processProvider: { resolvedMonitor.snapshot },
+            processRefreshAction: { await resolvedMonitor.scan() }
+        )
         loadPreferences()
         loadLifetimeStats()
     }
@@ -118,6 +125,7 @@ final class ProcessListViewModel {
 
     func refresh() async {
         await monitor.scan()
+        await startupItems.refresh()
     }
 
     func killSelected() async {
@@ -151,6 +159,7 @@ final class ProcessListViewModel {
 
             loadLifetimeStats()
             await monitor.scan()
+            await startupItems.refresh()
         } catch {
             lastError = error.localizedDescription
         }
@@ -173,6 +182,7 @@ final class ProcessListViewModel {
         await performKill(process: process)
         showingLaunchdConfirmation = false
         launchdConfirmProcess = nil
+        await startupItems.refresh()
     }
 
     func suspendSelected() {
@@ -436,11 +446,25 @@ final class ProcessListViewModel {
 
     func startMonitoring() {
         monitor.startPolling(interval: TimeInterval(pollingIntervalSeconds))
+        startupItems.startMonitoring()
         Task { await monitor.scan() }
     }
 
     func stopMonitoring() {
         monitor.stopPolling()
+        startupItems.stopMonitoring()
+    }
+
+    func openStartupItems() {
+        startupItems.clearFocus()
+        showingStartupItems = true
+        Task { await startupItems.refresh() }
+    }
+
+    func openStartupItems(for process: ATILProcess) {
+        startupItems.focus(on: process)
+        showingStartupItems = true
+        Task { await startupItems.refresh() }
     }
 
     func requestSearchFocus() {

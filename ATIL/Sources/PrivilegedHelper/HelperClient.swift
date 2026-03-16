@@ -7,6 +7,7 @@ final class HelperClient {
     static let shared = HelperClient()
 
     private let helperLabel = "dev.tuist.ATIL.Helper"
+    private let helperPlistName = "dev.tuist.ATIL.Helper.plist"
     private(set) var isHelperInstalled = false
 
     init() {
@@ -16,12 +17,12 @@ final class HelperClient {
     // MARK: - Helper Installation
 
     func checkHelperStatus() {
-        let service = SMAppService.daemon(plistName: helperLabel)
+        let service = SMAppService.daemon(plistName: helperPlistName)
         isHelperInstalled = service.status == .enabled
     }
 
     func installHelper() async throws {
-        let service = SMAppService.daemon(plistName: helperLabel)
+        let service = SMAppService.daemon(plistName: helperPlistName)
         try service.register()
         isHelperInstalled = true
     }
@@ -87,8 +88,8 @@ final class HelperClient {
         }
     }
 
-    /// Enable a launchd job via the privileged helper.
-    func enableLaunchdJob(label: String, plistPath: String) async throws {
+    /// Boot out a launchd job via the privileged helper.
+    func bootoutLaunchdJob(label: String, domain: String = "system") async throws {
         guard let conn = connection() else {
             throw HelperError.helperNotInstalled
         }
@@ -99,7 +100,29 @@ final class HelperClient {
                 continuation.resume(throwing: error)
             } as! ATILHelperProtocol
 
-            helper.enableLaunchdJob(label: label, plistPath: plistPath) { success, errorMessage in
+            helper.bootoutLaunchdJob(label: label, domain: domain) { success, errorMessage in
+                if success {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: HelperError.operationFailed(errorMessage ?? "Unknown error"))
+                }
+            }
+        }
+    }
+
+    /// Enable a launchd job via the privileged helper.
+    func enableLaunchdJob(label: String, domain: String, plistPath: String) async throws {
+        guard let conn = connection() else {
+            throw HelperError.helperNotInstalled
+        }
+        defer { conn.invalidate() }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let helper = conn.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(throwing: error)
+            } as! ATILHelperProtocol
+
+            helper.enableLaunchdJob(label: label, domain: domain, plistPath: plistPath) { success, errorMessage in
                 if success {
                     continuation.resume()
                 } else {

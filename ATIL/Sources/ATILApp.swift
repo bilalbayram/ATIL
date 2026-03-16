@@ -75,6 +75,12 @@ struct ATILApp: App {
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(focusedViewModel == nil)
+
+                Button("Startup Items…") {
+                    focusedViewModel?.openStartupItems()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(focusedViewModel == nil)
             }
 
             // Process menu
@@ -111,6 +117,15 @@ struct ATILApp: App {
                 }
                 .keyboardShortcut("i", modifiers: .command)
                 .disabled(focusedViewModel?.selectedProcess == nil)
+
+                Button("Open Startup Items") {
+                    if let process = focusedViewModel?.selectedProcess {
+                        focusedViewModel?.openStartupItems(for: process)
+                    } else {
+                        focusedViewModel?.openStartupItems()
+                    }
+                }
+                .disabled(focusedViewModel == nil)
             }
 
             // Help menu

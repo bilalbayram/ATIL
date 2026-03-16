@@ -68,3 +68,12 @@ Derived/
 
 ### Tuist managed dependencies ###
 Tuist/.build
+
+### AI tooling ###
+.agents/
+.claude/
+.codex/
+skills-lock.json
+
+### Build cache ###
+.xcodebuild/

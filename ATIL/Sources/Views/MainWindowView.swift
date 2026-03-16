@@ -86,6 +86,13 @@ struct MainWindowView: View {
                 .help("Manage auto-action rules")
 
                 Button {
+                    viewModel.openStartupItems()
+                } label: {
+                    Label("Startup Items", systemImage: "power.circle")
+                }
+                .help("Inspect and manage startup items")
+
+                Button {
                     Task { await viewModel.refresh() }
                 } label: {
                     Label { Text("Refresh") } icon: { refreshIcon }
@@ -113,6 +120,13 @@ struct MainWindowView: View {
                     viewModel.ruleBuilderRule = nil
                 }
             }
+        }
+        .sheet(isPresented: $vm.showingStartupItems) {
+            NavigationStack {
+                StartupItemsView()
+                    .environment(viewModel.startupItems)
+            }
+            .frame(minWidth: 900, minHeight: 620)
         }
         .sheet(isPresented: $vm.showingLaunchdConfirmation) {
             if let process = viewModel.launchdConfirmProcess {

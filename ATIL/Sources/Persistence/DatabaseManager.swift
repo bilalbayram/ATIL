@@ -36,7 +36,14 @@ final class DatabaseManager: Sendable {
     /// For testing with in-memory database
     init(inMemory: Bool) throws {
         if inMemory {
-            dbPool = try DatabasePool(path: ":memory:")
+            let temporaryDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ATILTests", isDirectory: true)
+            try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+            let dbPath = temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("sqlite")
+                .path
+            dbPool = try DatabasePool(path: dbPath)
         } else {
             fatalError("Use DatabaseManager.shared for on-disk database")
         }
@@ -129,6 +136,19 @@ final class DatabaseManager: Sendable {
                     ('relaunchRetentionScope', 'session'),
                     ('showGrouped', 'true');
             """)
+        }
+
+        migrator.registerMigration("v4_startup_blocks") { db in
+            try db.create(table: "startupBlocks", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("displayName", .text).notNull()
+                t.column("bundleIdentifier", .text)
+                t.column("teamIdentifier", .text)
+                t.column("bundlePath", .text)
+                t.column("knownLabelsJSON", .text).notNull()
+                t.column("knownExecutablePathsJSON", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+            }
         }
 
         return migrator

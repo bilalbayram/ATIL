@@ -66,6 +66,14 @@ struct InspectPanelView: View {
                                 Text(path)
                                     .font(.caption.monospaced())
                                     .textSelection(.enabled)
+
+                                Button {
+                                    viewModel.openStartupItems(for: process)
+                                } label: {
+                                    Label("Open in Startup Items", systemImage: "power.circle")
+                                }
+                                .buttonStyle(.link)
+                                .padding(.top, 4)
                             }
                         }
 
@@ -92,6 +100,13 @@ struct InspectPanelView: View {
                                 }
 
                                 LabeledMonospaceValue(label: "Plist Path", value: job.plistPath)
+
+                                Button {
+                                    viewModel.openStartupItems(for: process)
+                                } label: {
+                                    Label("Manage in Startup Items", systemImage: "power.circle")
+                                }
+                                .buttonStyle(.link)
                             } else {
                                 EmptyDetailState(message: "No launchd association found.")
                             }

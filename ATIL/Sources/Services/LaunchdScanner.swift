@@ -14,6 +14,10 @@ struct LaunchdJobInfo: Sendable {
     var willRespawn: Bool {
         keepAlive || runAtLoad
     }
+
+    var scope: StartupItemScope {
+        domain == "system" ? .system : .user
+    }
 }
 
 /// Scans launchd plist directories and builds a lookup from executable path → job info.
@@ -34,17 +38,19 @@ struct LaunchdScanner: Sendable {
     /// Scans all launchd directories and returns a map from executable path to job info.
     func scanAll() -> [String: LaunchdJobInfo] {
         var map: [String: LaunchdJobInfo] = [:]
-        for dir in Self.searchDirectories {
-            for info in scanDirectory(dir) {
-                if let program = info.programPath {
-                    map[program] = info
-                }
-                if let args = info.programArguments, let first = args.first {
-                    map[first] = info
-                }
+        for info in scanJobs() {
+            if let program = info.programPath {
+                map[program] = info
+            }
+            if let args = info.programArguments, let first = args.first {
+                map[first] = info
             }
         }
         return map
+    }
+
+    func scanJobs() -> [LaunchdJobInfo] {
+        Self.searchDirectories.flatMap(scanDirectory)
     }
 
     /// Scans a single directory for .plist files and parses them.
