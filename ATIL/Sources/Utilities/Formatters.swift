@@ -30,3 +30,10 @@ func formatDuration(_ interval: TimeInterval) -> String {
 func formatPID(_ pid: pid_t) -> String {
     "PID \(pid)"
 }
+
+func formatDateTime(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    return formatter.string(from: date)
+}

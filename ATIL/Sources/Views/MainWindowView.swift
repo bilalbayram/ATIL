@@ -122,11 +122,9 @@ struct MainWindowView: View {
             }
         }
         .sheet(isPresented: $vm.showingStartupItems) {
-            NavigationStack {
-                StartupItemsView()
-                    .environment(viewModel.startupItems)
-            }
-            .frame(minWidth: 920, idealWidth: 1080, minHeight: 640, idealHeight: 760)
+            StartupItemsView()
+                .environment(viewModel.startupItems)
+                .frame(minWidth: 920, idealWidth: 1080, minHeight: 640, idealHeight: 760)
         }
         .sheet(isPresented: $vm.showingLaunchdConfirmation) {
             if let process = viewModel.launchdConfirmProcess {

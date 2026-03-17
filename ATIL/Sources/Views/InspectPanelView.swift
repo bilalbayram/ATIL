@@ -375,50 +375,6 @@ private struct EmptyDetailState: View {
     }
 }
 
-private struct LabeledMonospaceValue: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.monospaced())
-                .textSelection(.enabled)
-        }
-    }
-}
-
-private struct SectionHeader: View {
-    let title: String
-
-    init(_ title: String) {
-        self.title = title
-    }
-
-    var body: some View {
-        Text(title)
-            .font(.headline)
-    }
-}
-
-private struct InfoRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.body.monospaced())
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
 
 private struct CategoryBadge: View {
     let category: ProcessCategory
