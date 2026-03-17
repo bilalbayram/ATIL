@@ -50,7 +50,7 @@ let project = Project(
                 .target(name: "ATILHelper"),
             ],
             settings: .settings(base: [
-                "MARKETING_VERSION": "1.0.0",
+                "MARKETING_VERSION": "1.0.1",
                 "CURRENT_PROJECT_VERSION": "1",
             ])
         ),
