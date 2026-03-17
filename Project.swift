@@ -10,6 +10,8 @@ let project = Project(
             bundleId: "com.bilalbayram.ATIL",
             deploymentTargets: .macOS("14.0"),
             infoPlist: .extendingDefault(with: [
+                "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+                "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
                 "SUFeedURL": "https://raw.githubusercontent.com/bilalbayram/ATIL/main/appcast.xml",
                 "SUPublicEDKey": "$(SPARKLE_ED_PUBLIC_KEY)",
             ]),

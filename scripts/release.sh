@@ -42,6 +42,17 @@ xcodebuild -workspace ATIL.xcworkspace -scheme ATIL \
   MARKETING_VERSION="${VERSION}" \
   clean build
 
+# ── Re-sign Sparkle framework for notarization ──────────────────────
+echo "==> Re-signing Sparkle framework binaries"
+SPARKLE_FW="${APP_PATH}/Contents/Frameworks/Sparkle.framework"
+SIGN_ID="Developer ID Application"
+codesign -f -s "${SIGN_ID}" --options runtime --timestamp \
+    "${SPARKLE_FW}/Versions/B/XPCServices/Downloader.xpc" \
+    "${SPARKLE_FW}/Versions/B/XPCServices/Installer.xpc" \
+    "${SPARKLE_FW}/Versions/B/Autoupdate" \
+    "${SPARKLE_FW}/Versions/B/Updater.app" \
+    "${SPARKLE_FW}"
+
 # ── Notarize app ─────────────────────────────────────────────────────
 echo "==> Notarizing app"
 ditto -c -k --keepParent "${APP_PATH}" /tmp/ATIL-notarize.zip
