@@ -2,5 +2,12 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
     <channel>
         <title>ATIL</title>
+        <item>
+            <title>Version 1.0.2</title>
+            <sparkle:version>1.0.2</sparkle:version>
+            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+            <pubDate>Tue, 17 Mar 2026 13:50:51 +0000</pubDate>
+            <enclosure url="https://github.com/bilalbayram/ATIL/releases/download/v1.0.2/ATIL-1.0.2.zip" sparkle:edSignature="cSPjghftiLN+EWG5eJYQgkTM4M8IlO2Mp8cR70fzYnbMgsRrM4SiEawrmv+sH8/DLZdurFq5ranNTv/DAd4gBg==" length="7612904" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
