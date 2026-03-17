@@ -59,7 +59,7 @@ let project = Project(
                 .target(name: "ATILHelper"),
             ],
             settings: .settings(base: [
-                "MARKETING_VERSION": "1.0.2",
+                "MARKETING_VERSION": "1.0.3",
                 "CURRENT_PROJECT_VERSION": "1",
                 "SPARKLE_ED_PUBLIC_KEY": "1+6/4ww0jBVqZ9B2nKhlaXTC7xBJKtmkMNEDONVUnyg=",
             ])
