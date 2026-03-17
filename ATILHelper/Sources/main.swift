@@ -125,7 +125,7 @@ final class HelperDelegate: NSObject, NSXPCListenerDelegate, ATILHelperProtocol 
     }
 }
 
-let listener = NSXPCListener(machServiceName: "dev.tuist.ATIL.Helper")
+let listener = NSXPCListener(machServiceName: "com.bilalbayram.ATIL.Helper")
 let delegate = HelperDelegate()
 listener.delegate = delegate
 listener.resume()

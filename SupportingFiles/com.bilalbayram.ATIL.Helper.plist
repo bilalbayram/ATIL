@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>dev.tuist.ATIL.Helper</string>
+    <string>com.bilalbayram.ATIL.Helper</string>
     <key>BundleProgram</key>
     <string>Contents/Library/HelperTools/ATILHelper</string>
     <key>MachServices</key>
     <dict>
-        <key>dev.tuist.ATIL.Helper</key>
+        <key>com.bilalbayram.ATIL.Helper</key>
         <true/>
     </dict>
     <key>RunAtLoad</key>

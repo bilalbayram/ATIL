@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 
 struct FocusedViewModelKey: FocusedValueKey {
@@ -13,8 +14,17 @@ extension FocusedValues {
 
 @main
 struct ATILApp: App {
+    private let updaterController: SPUStandardUpdaterController
     @State private var viewModel = ProcessListViewModel()
     @FocusedValue(\.viewModel) private var focusedViewModel
+
+    init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -24,6 +34,11 @@ struct ATILApp: App {
         }
         .defaultSize(width: 900, height: 600)
         .commands {
+            // Check for Updates in app menu
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
+
             // Remove default "New Window" command
             CommandGroup(replacing: .newItem) {}
 

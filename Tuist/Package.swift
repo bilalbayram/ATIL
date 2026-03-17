@@ -13,5 +13,6 @@ let package = Package(
     name: "ATIL",
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.0.0"),
     ]
 )

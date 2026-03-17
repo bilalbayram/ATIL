@@ -7,9 +7,12 @@ let project = Project(
             name: "ATIL",
             destinations: .macOS,
             product: .app,
-            bundleId: "dev.tuist.ATIL",
+            bundleId: "com.bilalbayram.ATIL",
             deploymentTargets: .macOS("14.0"),
-            infoPlist: .default,
+            infoPlist: .extendingDefault(with: [
+                "SUFeedURL": "https://raw.githubusercontent.com/bilalbayram/ATIL/main/appcast.xml",
+                "SUPublicEDKey": "$(SPARKLE_ED_PUBLIC_KEY)",
+            ]),
             buildableFolders: [
                 "ATIL/Sources",
                 "ATIL/Resources",
@@ -19,10 +22,13 @@ let project = Project(
                     name: "Embed Helper Plist",
                     subpath: "Contents/Library/LaunchDaemons",
                     files: [
-                        "SupportingFiles/dev.tuist.ATIL.Helper.plist",
+                        "SupportingFiles/com.bilalbayram.ATIL.Helper.plist",
                     ]
                 ),
             ],
+            entitlements: .dictionary([
+                "com.apple.security.network.client": .boolean(true),
+            ]),
             scripts: [
                 .post(
                     script: """
@@ -47,18 +53,20 @@ let project = Project(
             ],
             dependencies: [
                 .external(name: "GRDB"),
+                .external(name: "Sparkle"),
                 .target(name: "ATILHelper"),
             ],
             settings: .settings(base: [
                 "MARKETING_VERSION": "1.0.1",
                 "CURRENT_PROJECT_VERSION": "1",
+                "SPARKLE_ED_PUBLIC_KEY": "1+6/4ww0jBVqZ9B2nKhlaXTC7xBJKtmkMNEDONVUnyg=",
             ])
         ),
         .target(
             name: "ATILHelper",
             destinations: .macOS,
             product: .commandLineTool,
-            bundleId: "dev.tuist.ATIL.Helper",
+            bundleId: "com.bilalbayram.ATIL.Helper",
             deploymentTargets: .macOS("14.0"),
             infoPlist: .default,
             sources: [
@@ -73,7 +81,7 @@ let project = Project(
             name: "ATILTests",
             destinations: .macOS,
             product: .unitTests,
-            bundleId: "dev.tuist.ATILTests",
+            bundleId: "com.bilalbayram.ATILTests",
             deploymentTargets: .macOS("14.0"),
             infoPlist: .default,
             buildableFolders: [

@@ -6,8 +6,8 @@ import ServiceManagement
 final class HelperClient {
     static let shared = HelperClient()
 
-    private let helperLabel = "dev.tuist.ATIL.Helper"
-    private let helperPlistName = "dev.tuist.ATIL.Helper.plist"
+    private let helperLabel = "com.bilalbayram.ATIL.Helper"
+    private let helperPlistName = "com.bilalbayram.ATIL.Helper.plist"
     private(set) var isHelperInstalled = false
 
     init() {
