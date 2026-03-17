@@ -34,6 +34,32 @@ struct StartupControlService: Sendable {
         }
     }
 
+    func deletePlist(_ item: StartupItem) async throws {
+        guard let plistPath = item.plistPath else { throw ControlError.unsupportedItem }
+
+        // Bootout the job first if it has a label
+        if let label = item.label {
+            if item.scope == .system {
+                try? await HelperClient.shared.bootoutLaunchdJob(label: label, domain: item.domain)
+                try? await HelperClient.shared.disableLaunchdJob(label: label, domain: item.domain)
+            } else {
+                try? runLaunchctl(arguments: ["bootout", "\(item.domain)/\(label)"])
+                try? runLaunchctl(arguments: ["disable", "\(item.domain)/\(label)"])
+            }
+        }
+
+        // Delete the plist
+        if item.scope == .system {
+            try await HelperClient.shared.deletePlistFile(atPath: plistPath)
+        } else {
+            var resultingURL: NSURL?
+            try FileManager.default.trashItem(
+                at: URL(fileURLWithPath: plistPath),
+                resultingItemURL: &resultingURL
+            )
+        }
+    }
+
     func reveal(_ item: StartupItem) {
         guard let path = item.plistPath ?? item.executablePath else { return }
         NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")

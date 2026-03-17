@@ -54,6 +54,26 @@ struct StartupItemsView: View {
             .animation(ATILAnimation.subtle(reduceMotion: reduceMotion), value: viewModel.selectedGroupID)
         }
         .navigationTitle("Startup Items")
+        .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    Task { await viewModel.refreshManually() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .help("Refresh startup items")
+                .disabled(viewModel.isRefreshing || viewModel.isPerformingUserAction)
+
+                Button {
+                    Task { await viewModel.scanForOrphans() }
+                } label: {
+                    Label("Find Orphans", systemImage: "magnifyingglass.circle")
+                }
+                .help("Scan for orphaned startup items")
+                .disabled(viewModel.orphanScanInProgress || viewModel.isRefreshing || viewModel.isPerformingUserAction)
+            }
+        }
         .task {
             await viewModel.refresh()
         }
@@ -64,6 +84,26 @@ struct StartupItemsView: View {
             Button("OK") { viewModel.lastError = nil }
         } message: {
             Text(viewModel.lastError ?? "")
+        }
+        .alert("Delete Plist File", isPresented: Binding(
+            get: { vm.itemPendingDeletion != nil },
+            set: { if !$0 { vm.itemPendingDeletion = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { vm.itemPendingDeletion = nil }
+            Button("Delete", role: .destructive) {
+                Task { await viewModel.deleteConfirmedItem() }
+            }
+        } message: {
+            if let item = viewModel.itemPendingDeletion {
+                if item.scope == .system {
+                    Text("The plist file for \"\(item.displayLabel)\" will be permanently removed. This cannot be undone.")
+                } else {
+                    Text("The plist file for \"\(item.displayLabel)\" will be moved to Trash.")
+                }
+            }
+        }
+        .sheet(isPresented: $vm.showingOrphanWizard) {
+            OrphanCleanupSheet()
         }
     }
 }

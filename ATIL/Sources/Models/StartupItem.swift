@@ -110,6 +110,10 @@ struct StartupItem: Identifiable, Hashable, Codable, Sendable {
         label != nil && state != .unknown
     }
 
+    var canDeletePlist: Bool {
+        plistPath != nil && state != .unknown
+    }
+
     var serviceTarget: String? {
         guard let label else { return nil }
         return "\(domain)/\(label)"

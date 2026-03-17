@@ -89,6 +89,10 @@ final class StartupItemsViewModel {
     var isPerformingUserAction = false
     var actionFeedback: StartupActionFeedback?
     var lastError: String?
+    var itemPendingDeletion: StartupItem?
+    var showingOrphanWizard = false
+    var orphanedItems: [OrphanedStartupItem] = []
+    var orphanScanInProgress = false
 
     init(
         processProvider: @escaping @MainActor () -> [ATILProcess],
@@ -324,6 +328,59 @@ final class StartupItemsViewModel {
             success: "Stopped \(process.name)."
         ) {
             _ = try await actionService.kill(process: process)
+            await processRefreshAction()
+            await refresh()
+        }
+    }
+
+    func confirmDeleteSelectedItem() {
+        itemPendingDeletion = selectedItem
+    }
+
+    func deleteConfirmedItem() async {
+        guard let item = itemPendingDeletion else { return }
+        itemPendingDeletion = nil
+
+        await performUserAction(
+            progress: "Deleting \(item.displayLabel)…",
+            success: "Deleted \(item.displayLabel)."
+        ) {
+            if item.scope == .system && !HelperClient.shared.isHelperInstalled {
+                try await HelperClient.shared.installHelper()
+            }
+            try await controlService.deletePlist(item)
+            await processRefreshAction()
+            await refresh()
+        }
+    }
+
+    func scanForOrphans() async {
+        orphanScanInProgress = true
+        let currentItems = items
+        let detectionService = OrphanDetectionService()
+
+        orphanedItems = await Task.detached(priority: .userInitiated) {
+            detectionService.detectOrphans(in: currentItems)
+        }.value
+
+        orphanScanInProgress = false
+        showingOrphanWizard = true
+    }
+
+    func deleteOrphanedItems(selected: Set<String>) async {
+        let orphansToDelete = orphanedItems.filter { selected.contains($0.id) }
+        guard !orphansToDelete.isEmpty else { return }
+
+        await performUserAction(
+            progress: "Removing \(orphansToDelete.count) orphaned item(s)…",
+            success: "Removed \(orphansToDelete.count) orphaned item(s)."
+        ) {
+            for orphan in orphansToDelete {
+                if orphan.item.scope == .system && !HelperClient.shared.isHelperInstalled {
+                    try await HelperClient.shared.installHelper()
+                }
+                try await controlService.deletePlist(orphan.item)
+            }
             await processRefreshAction()
             await refresh()
         }

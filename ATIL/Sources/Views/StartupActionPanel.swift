@@ -82,6 +82,13 @@ struct StartupActionPanel: View {
                 viewModel.revealSelectedItem()
             }
             .disabled(!canRevealSelectedItem || viewModel.isPerformingUserAction)
+
+            Divider()
+
+            Button("Delete Plist File", role: .destructive) {
+                viewModel.confirmDeleteSelectedItem()
+            }
+            .disabled(!canDeleteSelectedPlist || viewModel.isPerformingUserAction)
         } label: {
             Label("More", systemImage: "ellipsis.circle")
         }
@@ -96,6 +103,11 @@ struct StartupActionPanel: View {
     private var canRevealSelectedItem: Bool {
         guard let item = viewModel.selectedItem else { return false }
         return item.plistPath != nil || item.executablePath != nil
+    }
+
+    private var canDeleteSelectedPlist: Bool {
+        guard let item = viewModel.selectedItem else { return false }
+        return item.canDeletePlist
     }
 }
 

@@ -69,6 +69,36 @@ final class HelperDelegate: NSObject, NSXPCListenerDelegate, ATILHelperProtocol 
         reply(pipe.fileHandleForReading.readDataToEndOfFile())
     }
 
+    func deletePlistFile(atPath path: String, withReply reply: @escaping (Bool, String?) -> Void) {
+        guard path.hasSuffix(".plist") else {
+            reply(false, "Path must end with .plist")
+            return
+        }
+
+        let allowedPrefixes = ["/Library/LaunchDaemons/", "/Library/LaunchAgents/"]
+        guard allowedPrefixes.contains(where: { path.hasPrefix($0) }) else {
+            reply(false, "Path must be under /Library/LaunchDaemons/ or /Library/LaunchAgents/")
+            return
+        }
+
+        guard path == (path as NSString).standardizingPath else {
+            reply(false, "Path must not contain relative components")
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: path) else {
+            reply(false, "File does not exist at path")
+            return
+        }
+
+        do {
+            try FileManager.default.removeItem(atPath: path)
+            reply(true, nil)
+        } catch {
+            reply(false, error.localizedDescription)
+        }
+    }
+
     private func runLaunchctl(arguments: [String]) -> (Bool, String?) {
         let task = Process()
         let errorPipe = Pipe()

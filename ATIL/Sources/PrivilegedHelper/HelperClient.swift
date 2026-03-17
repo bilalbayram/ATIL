@@ -132,6 +132,28 @@ final class HelperClient {
         }
     }
 
+    /// Delete a plist file via the privileged helper (system scope only).
+    func deletePlistFile(atPath path: String) async throws {
+        guard let conn = connection() else {
+            throw HelperError.helperNotInstalled
+        }
+        defer { conn.invalidate() }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let helper = conn.remoteObjectProxyWithErrorHandler { error in
+                continuation.resume(throwing: error)
+            } as! ATILHelperProtocol
+
+            helper.deletePlistFile(atPath: path) { success, errorMessage in
+                if success {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: HelperError.operationFailed(errorMessage ?? "Unknown error"))
+                }
+            }
+        }
+    }
+
     // MARK: - Errors
 
     enum HelperError: Error, LocalizedError {

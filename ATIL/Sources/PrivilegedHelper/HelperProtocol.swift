@@ -17,6 +17,9 @@ import Foundation
 
     /// Read launchd job metadata for a given label.
     func getLaunchdJobInfo(label: String, withReply reply: @escaping (Data?) -> Void)
+
+    /// Delete a plist file at the given path (system scope only).
+    func deletePlistFile(atPath path: String, withReply reply: @escaping (Bool, String?) -> Void)
 }
 
 /// The main app's side — the helper can call back to verify the connection.
