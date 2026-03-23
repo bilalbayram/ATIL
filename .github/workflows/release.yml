@@ -40,7 +40,7 @@ jobs:
 
       - name: Derive release metadata
         run: |
-          python3 - <<'PY' >> "$GITHUB_ENV"
+          eval "$(python3 - <<'PY'
           import sys
           from pathlib import Path
           sys.path.insert(0, "scripts")
@@ -49,6 +49,10 @@ jobs:
           print(f"MARKETING_VERSION={version.marketing_version}")
           print(f"BUILD_NUMBER={version.build_number}")
           PY
+          )"
+
+          echo "MARKETING_VERSION=${MARKETING_VERSION}" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
 
           if [ "${GITHUB_REF_NAME}" != "v${MARKETING_VERSION}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match version file v${MARKETING_VERSION}" >&2
