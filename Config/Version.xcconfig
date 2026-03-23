@@ -1,0 +1,5 @@
+// Canonical version metadata for ATIL releases.
+// MARKETING_VERSION is user-facing.
+// CURRENT_PROJECT_VERSION is the monotonic integer build number Sparkle compares.
+MARKETING_VERSION = 1.0.4
+CURRENT_PROJECT_VERSION = 4

@@ -33,6 +33,10 @@ struct ATILApp: App {
                 .frame(minWidth: 700, minHeight: 400)
         }
         .defaultSize(width: 900, height: 600)
+
+        Settings {
+            DefaultAppsSettingsView()
+        }
         .commands {
             // Check for Updates in app menu
             CommandGroup(after: .appInfo) {

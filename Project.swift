@@ -1,4 +1,47 @@
+import Foundation
 import ProjectDescription
+
+struct AppVersionSettings {
+    let marketingVersion: String
+    let currentProjectVersion: String
+}
+
+func loadAppVersionSettings(from relativePath: String = "Config/Version.xcconfig") -> AppVersionSettings {
+    let rootURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let fileURL = rootURL.appendingPathComponent(relativePath)
+
+    guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else {
+        fatalError("Unable to read version settings from \(relativePath)")
+    }
+
+    var values: [String: String] = [:]
+
+    for rawLine in contents.components(separatedBy: .newlines) {
+        let line = rawLine.trimmingCharacters(in: .whitespaces)
+        guard !line.isEmpty, !line.hasPrefix("//"), !line.hasPrefix("#") else {
+            continue
+        }
+
+        let components = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+        guard components.count == 2 else {
+            fatalError("Invalid version settings line: \(rawLine)")
+        }
+
+        values[components[0]] = components[1]
+    }
+
+    guard let marketingVersion = values["MARKETING_VERSION"],
+          let currentProjectVersion = values["CURRENT_PROJECT_VERSION"] else {
+        fatalError("Config/Version.xcconfig must define MARKETING_VERSION and CURRENT_PROJECT_VERSION")
+    }
+
+    return AppVersionSettings(
+        marketingVersion: marketingVersion,
+        currentProjectVersion: currentProjectVersion
+    )
+}
+
+let appVersionSettings = loadAppVersionSettings()
 
 let project = Project(
     name: "ATIL",
@@ -59,9 +102,9 @@ let project = Project(
                 .target(name: "ATILHelper"),
             ],
             settings: .settings(base: [
-                "MARKETING_VERSION": "1.0.3",
-                "CURRENT_PROJECT_VERSION": "1",
-                "SPARKLE_ED_PUBLIC_KEY": "1+6/4ww0jBVqZ9B2nKhlaXTC7xBJKtmkMNEDONVUnyg=",
+                "MARKETING_VERSION": .string(appVersionSettings.marketingVersion),
+                "CURRENT_PROJECT_VERSION": .string(appVersionSettings.currentProjectVersion),
+                "SPARKLE_ED_PUBLIC_KEY": .string("1+6/4ww0jBVqZ9B2nKhlaXTC7xBJKtmkMNEDONVUnyg="),
             ])
         ),
         .target(

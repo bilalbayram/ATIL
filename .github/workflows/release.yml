@@ -1,0 +1,264 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-15
+    env:
+      APP_NAME: ATIL
+      APP_PATH: ${{ github.workspace }}/build/Build/Products/Release/ATIL.app
+      APPCAST_PUSH_TOKEN: ${{ secrets.APPCAST_PUSH_TOKEN }}
+      BUILD_DIR: ${{ github.workspace }}/build
+      GH_TOKEN: ${{ github.token }}
+      KEYCHAIN_PATH: ${{ runner.temp }}/atil-release.keychain-db
+      NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+      SPARKLE_KEY_PATH: ${{ runner.temp }}/sparkle_private_key
+      SPARKLE_TOOLS_DIR: ${{ runner.temp }}/sparkle-tools
+      VERSION_FILE: Config/Version.xcconfig
+
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+
+      - name: Derive release metadata
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from release_support import parse_version_file
+          version = parse_version_file(Path("Config/Version.xcconfig"))
+          print(f"MARKETING_VERSION={version.marketing_version}")
+          print(f"BUILD_NUMBER={version.build_number}")
+          PY
+
+          if [ "${GITHUB_REF_NAME}" != "v${MARKETING_VERSION}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match version file v${MARKETING_VERSION}" >&2
+            exit 1
+          fi
+
+          cp "${VERSION_FILE}" "${RUNNER_TEMP}/release-version.xcconfig"
+          echo "RELEASE_VERSION_FILE=${RUNNER_TEMP}/release-version.xcconfig" >> "$GITHUB_ENV"
+          echo "DMG_PATH=${RUNNER_TEMP}/ATIL-${MARKETING_VERSION}.dmg" >> "$GITHUB_ENV"
+          echo "ZIP_PATH=${RUNNER_TEMP}/ATIL-${MARKETING_VERSION}.zip" >> "$GITHUB_ENV"
+          echo "NOTARIZE_ZIP_PATH=${RUNNER_TEMP}/ATIL-notarize.zip" >> "$GITHUB_ENV"
+          echo "RELEASE_NOTES_PATH=${RUNNER_TEMP}/release-notes.md" >> "$GITHUB_ENV"
+
+      - name: Generate release notes
+        run: |
+          python3 scripts/generate_release_notes.py \
+            --marketing-version "${MARKETING_VERSION}" \
+            --current-ref "${GITHUB_SHA}" \
+            --repo-root . \
+            --output "${RELEASE_NOTES_PATH}"
+
+      - name: Run release helper tests
+        run: python3 -m unittest discover -s scripts/tests
+
+      - name: Download Sparkle tools
+        run: |
+          mkdir -p "${SPARKLE_TOOLS_DIR}" "${RUNNER_TEMP}/sparkle"
+          curl -fsSL https://github.com/sparkle-project/Sparkle/releases/download/2.9.0/Sparkle-2.9.0.tar.xz \
+            -o "${RUNNER_TEMP}/sparkle.tar.xz"
+          tar -xJf "${RUNNER_TEMP}/sparkle.tar.xz" -C "${RUNNER_TEMP}/sparkle"
+          cp "${RUNNER_TEMP}/sparkle/bin/sign_update" "${SPARKLE_TOOLS_DIR}/sign_update"
+          chmod +x "${SPARKLE_TOOLS_DIR}/sign_update"
+
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(python3 - <<'PY'
+          import secrets
+          print(secrets.token_hex(16))
+          PY
+          )
+          echo "KEYCHAIN_PASSWORD=${KEYCHAIN_PASSWORD}" >> "$GITHUB_ENV"
+
+          printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" | base64 -d > "${RUNNER_TEMP}/certificate.p12"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${RUNNER_TEMP}/certificate.p12" \
+            -k "${KEYCHAIN_PATH}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -A -t cert -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+
+          ORIGINAL_KEYCHAINS=$(security list-keychains -d user | tr -d '"')
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" ${ORIGINAL_KEYCHAINS}
+
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          if [ -z "${SIGNING_IDENTITY}" ]; then
+            echo "Could not find a Developer ID Application identity in ${KEYCHAIN_PATH}" >&2
+            exit 1
+          fi
+          echo "SIGNING_IDENTITY=${SIGNING_IDENTITY}" >> "$GITHUB_ENV"
+
+      - name: Write CI signing keys
+        env:
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          printf '%s' "${APPLE_NOTARY_API_KEY_P8}" > "${NOTARY_KEY_PATH}"
+          chmod 600 "${NOTARY_KEY_PATH}"
+          printf '%s' "${SPARKLE_PRIVATE_KEY}" > "${SPARKLE_KEY_PATH}"
+          chmod 600 "${SPARKLE_KEY_PATH}"
+
+      - name: Generate Xcode project
+        run: |
+          tuist install
+          tuist generate
+
+      - name: Build release app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -workspace ATIL.xcworkspace -scheme ATIL \
+            -configuration Release -derivedDataPath build \
+            CODE_SIGN_IDENTITY="${SIGNING_IDENTITY}" \
+            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
+            CODE_SIGN_STYLE="Manual" \
+            ENABLE_HARDENED_RUNTIME=YES \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            OTHER_CODE_SIGN_FLAGS="--keychain ${KEYCHAIN_PATH} --timestamp" \
+            clean build
+
+      - name: Validate built app metadata
+        run: |
+          python3 scripts/validate_release_metadata.py \
+            --version-file "${RELEASE_VERSION_FILE}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --app-path "${APP_PATH}"
+
+      - name: Re-sign Sparkle framework
+        run: |
+          SPARKLE_FW="${APP_PATH}/Contents/Frameworks/Sparkle.framework"
+          codesign -f -s "${SIGNING_IDENTITY}" --keychain "${KEYCHAIN_PATH}" --options runtime --timestamp \
+            "${SPARKLE_FW}/Versions/B/XPCServices/Downloader.xpc" \
+            "${SPARKLE_FW}/Versions/B/XPCServices/Installer.xpc" \
+            "${SPARKLE_FW}/Versions/B/Autoupdate" \
+            "${SPARKLE_FW}/Versions/B/Updater.app" \
+            "${SPARKLE_FW}"
+
+      - name: Notarize app
+        env:
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+        run: |
+          ditto -c -k --keepParent "${APP_PATH}" "${NOTARIZE_ZIP_PATH}"
+          xcrun notarytool submit "${NOTARIZE_ZIP_PATH}" \
+            --key "${NOTARY_KEY_PATH}" \
+            --key-id "${APPLE_NOTARY_KEY_ID}" \
+            --issuer "${APPLE_NOTARY_ISSUER_ID}" \
+            --wait
+          xcrun stapler staple "${APP_PATH}"
+
+      - name: Create and notarize DMG
+        env:
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+        run: |
+          rm -rf "${RUNNER_TEMP}/ATIL-dmg"
+          mkdir -p "${RUNNER_TEMP}/ATIL-dmg"
+          cp -R "${APP_PATH}" "${RUNNER_TEMP}/ATIL-dmg/"
+          ln -s /Applications "${RUNNER_TEMP}/ATIL-dmg/Applications"
+          hdiutil create -volname ATIL -srcfolder "${RUNNER_TEMP}/ATIL-dmg" -ov -format UDZO "${DMG_PATH}"
+          xcrun notarytool submit "${DMG_PATH}" \
+            --key "${NOTARY_KEY_PATH}" \
+            --key-id "${APPLE_NOTARY_KEY_ID}" \
+            --issuer "${APPLE_NOTARY_ISSUER_ID}" \
+            --wait
+          xcrun stapler staple "${DMG_PATH}"
+
+      - name: Create and sign Sparkle archive
+        run: |
+          ditto -c -k --keepParent "${APP_PATH}" "${ZIP_PATH}"
+          ZIP_LENGTH=$(stat -f%z "${ZIP_PATH}")
+          SPARKLE_SIGNATURE=$(cat "${SPARKLE_KEY_PATH}" | "${SPARKLE_TOOLS_DIR}/sign_update" --ed-key-file - -p "${ZIP_PATH}")
+          PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/ATIL-${MARKETING_VERSION}.zip"
+
+          echo "ZIP_LENGTH=${ZIP_LENGTH}" >> "$GITHUB_ENV"
+          echo "SPARKLE_SIGNATURE=${SPARKLE_SIGNATURE}" >> "$GITHUB_ENV"
+          echo "PUB_DATE=${PUB_DATE}" >> "$GITHUB_ENV"
+          echo "DOWNLOAD_URL=${DOWNLOAD_URL}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub release
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${DMG_PATH}" "${ZIP_PATH}" --clobber
+            gh release edit "${GITHUB_REF_NAME}" \
+              --title "ATIL ${GITHUB_REF_NAME}" \
+              --notes-file "${RELEASE_NOTES_PATH}"
+          else
+            gh release create "${GITHUB_REF_NAME}" "${DMG_PATH}" "${ZIP_PATH}" \
+              --title "ATIL ${GITHUB_REF_NAME}" \
+              --notes-file "${RELEASE_NOTES_PATH}"
+          fi
+
+      - name: Update appcast on main
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 scripts/update_appcast.py \
+            --appcast appcast.xml \
+            --version-file "${RELEASE_VERSION_FILE}" \
+            --pub-date "${PUB_DATE}" \
+            --download-url "${DOWNLOAD_URL}" \
+            --length "${ZIP_LENGTH}" \
+            --ed-signature "${SPARKLE_SIGNATURE}"
+
+          python3 scripts/validate_release_metadata.py \
+            --version-file "${RELEASE_VERSION_FILE}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --app-path "${APP_PATH}" \
+            --appcast appcast.xml \
+            --download-url "${DOWNLOAD_URL}" \
+            --length "${ZIP_LENGTH}" \
+            --ed-signature "${SPARKLE_SIGNATURE}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          if git diff --cached --quiet; then
+            echo "appcast.xml is already up to date for ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          git commit -m "Update appcast for ${GITHUB_REF_NAME}"
+
+          PUSH_TOKEN="${APPCAST_PUSH_TOKEN:-${GH_TOKEN}}"
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:main
+
+      - name: Clean up signing state
+        if: always()
+        run: |
+          rm -f "${NOTARY_KEY_PATH}" "${SPARKLE_KEY_PATH}" "${RUNNER_TEMP}/certificate.p12"
+          security delete-keychain "${KEYCHAIN_PATH}" || true

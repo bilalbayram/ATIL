@@ -1,0 +1,64 @@
+name: Release Metadata CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "ATIL/Sources/ATILApp.swift"
+      - "ATIL/Sources/Views/CheckForUpdatesView.swift"
+      - "Config/**"
+      - "Project.swift"
+      - "appcast.xml"
+      - "scripts/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+      - "ATIL/Sources/ATILApp.swift"
+      - "ATIL/Sources/Views/CheckForUpdatesView.swift"
+      - "Config/**"
+      - "Project.swift"
+      - "appcast.xml"
+      - "scripts/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+
+      - name: Run release helper tests
+        run: python3 -m unittest discover -s scripts/tests
+
+      - name: Generate Xcode project
+        run: |
+          tuist install
+          tuist generate
+
+      - name: Build debug app
+        run: |
+          xcodebuild -workspace ATIL.xcworkspace -scheme ATIL \
+            -configuration Debug -derivedDataPath .xcodebuild \
+            clean build
+
+      - name: Validate built app metadata
+        run: |
+          python3 scripts/validate_release_metadata.py \
+            --version-file Config/Version.xcconfig \
+            --app-path .xcodebuild/Build/Products/Debug/ATIL.app
