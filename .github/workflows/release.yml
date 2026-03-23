@@ -21,10 +21,6 @@ jobs:
       APPCAST_PUSH_TOKEN: ${{ secrets.APPCAST_PUSH_TOKEN }}
       BUILD_DIR: ${{ github.workspace }}/build
       GH_TOKEN: ${{ github.token }}
-      KEYCHAIN_PATH: ${{ runner.temp }}/atil-release.keychain-db
-      NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
-      SPARKLE_KEY_PATH: ${{ runner.temp }}/sparkle_private_key
-      SPARKLE_TOOLS_DIR: ${{ runner.temp }}/sparkle-tools
       VERSION_FILE: Config/Version.xcconfig
 
     steps:
@@ -61,6 +57,10 @@ jobs:
 
           cp "${VERSION_FILE}" "${RUNNER_TEMP}/release-version.xcconfig"
           echo "RELEASE_VERSION_FILE=${RUNNER_TEMP}/release-version.xcconfig" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=${RUNNER_TEMP}/atil-release.keychain-db" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_PATH=${RUNNER_TEMP}/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "SPARKLE_KEY_PATH=${RUNNER_TEMP}/sparkle_private_key" >> "$GITHUB_ENV"
+          echo "SPARKLE_TOOLS_DIR=${RUNNER_TEMP}/sparkle-tools" >> "$GITHUB_ENV"
           echo "DMG_PATH=${RUNNER_TEMP}/ATIL-${MARKETING_VERSION}.dmg" >> "$GITHUB_ENV"
           echo "ZIP_PATH=${RUNNER_TEMP}/ATIL-${MARKETING_VERSION}.zip" >> "$GITHUB_ENV"
           echo "NOTARIZE_ZIP_PATH=${RUNNER_TEMP}/ATIL-notarize.zip" >> "$GITHUB_ENV"
